@@ -1,0 +1,5 @@
+{
+  "name": "ProcureAI Agent",
+  "description": "A smart procurement assistant with file analysis capabilities, powered by Dify workflow.",
+  "requestFramePermissions": []
+}
