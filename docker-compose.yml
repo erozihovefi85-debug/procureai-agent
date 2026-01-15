@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # MongoDB 数据库
+  mongodb:
+    image: mongo:latest
+    container_name: procureai-mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin_password
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - procureai-network
+
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile.backend
+    container_name: procureai-backend
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - MONGODB_URI=mongodb://admin:admin_password@mongodb:27017/procureai?authSource=admin
+      - JWT_SECRET=CHANGE_THIS_TO_A_VERY_STRONG_SECRET_MIN_32_CHARACTERS_LONG
+      - JWT_EXPIRE=7d
+      - DIFY_API_BASE=https://api.dify.ai/v1
+      - DIFY_API_KEY_CASUAL=app-ay5UT5TnYR83d2guU5enM4oG
+      - DIFY_API_KEY_KEYWORD=app-SgyXcIw7mNIKb5vt9MzTBJ5O
+      - DIFY_API_KEY_DOCGEN=app-F7Xn0o7BeFH0FjZ6jsZnEMxp
+      - DIFY_API_KEY_SUPPLIER=app-0yoM8NhLhSYv7JDxnmly4G0l
+      - DIFY_API_KEY_PRICE=app-dMXx5Pz90hBDhCBzXIfcS1EJ
+      - CORS_ORIGIN=*
+      - ADMIN_EMAIL=admin@procureai.com
+      - ADMIN_PASSWORD=admin123
+      - MAX_FILE_SIZE=10485760
+      - UPLOAD_DIR=./uploads
+    ports:
+      - "3001:3001"
+    depends_on:
+      - mongodb
+    networks:
+      - procureai-network
+    volumes:
+      - ./backend/uploads:/app/uploads
+
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: procureai-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - procureai-network
+    depends_on:
+      - backend
+
+networks:
+  procureai-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
