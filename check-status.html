@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProcureAI - 服务状态检查</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 32px;
+        }
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+        .status-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-running {
+            background: #10b981;
+            color: white;
+        }
+        .status-stopped {
+            background: #ef4444;
+            color: white;
+        }
+        .status-checking {
+            background: #f59e0b;
+            color: white;
+        }
+        .status-url {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            color: #667eea;
+            word-break: break-all;
+        }
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            text-align: center;
+            display: inline-block;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        .btn-secondary:hover {
+            background: #d1d5db;
+        }
+        .info-section {
+            background: #fef3c7;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            border: 1px solid #fcd34d;
+        }
+        .info-title {
+            font-weight: bold;
+            color: #92400e;
+            margin-bottom: 8px;
+        }
+        .info-content {
+            color: #78350f;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .admin-info {
+            background: #dbeafe;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+            border: 1px solid #93c5fd;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 ProcureAI 服务状态</h1>
+
+        <div class="status-card">
+            <div class="status-title">
+                后端服务
+                <span id="backend-status" class="status-badge status-checking">
+                    <span class="spinner"></span> 检查中...
+                </span>
+            </div>
+            <div class="status-url" id="backend-url">http://localhost:3001/api</div>
+            <div id="backend-result" style="margin-top: 10px; color: #666; font-size: 14px;"></div>
+        </div>
+
+        <div class="status-card">
+            <div class="status-title">
+                前端服务
+                <span id="frontend-status" class="status-badge status-checking">
+                    <span class="spinner"></span> 检查中...
+                </span>
+            </div>
+            <div class="status-url" id="frontend-url">http://localhost:5173</div>
+            <div id="frontend-result" style="margin-top: 10px; color: #666; font-size: 14px;"></div>
+        </div>
+
+        <div class="action-buttons">
+            <a href="http://localhost:5173" class="btn btn-primary" target="_blank">
+                📱 打开前端应用
+            </a>
+            <a href="http://localhost:3001/api" class="btn btn-secondary" target="_blank">
+                🔧 查看后端 API
+            </a>
+        </div>
+
+        <div class="info-section">
+            <div class="info-title">💡 快速提示</div>
+            <div class="info-content">
+                <ul style="padding-left: 20px; margin-top: 5px;">
+                    <li>如果显示"停止中"，请确保服务已启动</li>
+                    <li>后端启动命令：<code>cd backend && npm run dev</code></li>
+                    <li>前端启动命令：<code>npm run dev</code></li>
+                    <li>首次使用请运行：<code>npm run seed</code> 初始化数据库</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="admin-info">
+            <div class="info-title">🔐 默认管理员账号</div>
+            <div class="info-content" style="color: #1e40af;">
+                邮箱：<strong>admin@procureai.com</strong><br>
+                密码：<strong>admin123</strong><br>
+                <small style="margin-top: 8px; display: block;">登录后请立即修改默认密码</small>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function checkBackend() {
+            const statusEl = document.getElementById('backend-status');
+            const resultEl = document.getElementById('backend-result');
+
+            try {
+                const response = await fetch('http://localhost:3001/api');
+                const data = await response.json();
+
+                if (data.status === 'running') {
+                    statusEl.className = 'status-badge status-running';
+                    statusEl.textContent = '✓ 运行中';
+                    resultEl.textContent = `版本: ${data.version}`;
+                } else {
+                    throw new Error('Invalid response');
+                }
+            } catch (error) {
+                statusEl.className = 'status-badge status-stopped';
+                statusEl.textContent = '✗ 停止中';
+                resultEl.textContent = '错误: 无法连接到后端服务，请确保服务已启动';
+            }
+        }
+
+        async function checkFrontend() {
+            const statusEl = document.getElementById('frontend-status');
+            const resultEl = document.getElementById('frontend-result');
+
+            try {
+                const response = await fetch('http://localhost:5173');
+                const text = await response.text();
+
+                if (text.includes('ProcureAI') || text.includes('采购')) {
+                    statusEl.className = 'status-badge status-running';
+                    statusEl.textContent = '✓ 运行中';
+                    resultEl.textContent = '前端服务正常';
+                } else {
+                    throw new Error('Invalid response');
+                }
+            } catch (error) {
+                statusEl.className = 'status-badge status-stopped';
+                statusEl.textContent = '✗ 停止中';
+                resultEl.textContent = '错误: 无法连接到前端服务，请确保服务已启动';
+            }
+        }
+
+        // Check both services
+        checkBackend();
+        setTimeout(checkFrontend, 500);
+
+        // Auto-refresh every 5 seconds
+        setInterval(() => {
+            checkBackend();
+            setTimeout(checkFrontend, 500);
+        }, 5000);
+    </script>
+</body>
+</html>

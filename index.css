@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Specific "Drag Bar" style for tables */
+.custom-table-scrollbar::-webkit-scrollbar {
+  height: 8px; /* Thicker for horizontal scroll */
+}
+.custom-table-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+.custom-table-scrollbar::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border: 2px solid #f1f5f9;
+  border-radius: 4px;
+}
+.custom-table-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Optional: Always show scrollbar in table to signal scrollability */
+.custom-table-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+}

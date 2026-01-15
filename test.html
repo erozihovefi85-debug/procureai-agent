@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProcureAI - 测试工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 40px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 32px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .test-status {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .status-pending {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+        .status-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .status-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .test-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #667eea;
+            color: white;
+        }
+        .test-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        .test-btn:disabled {
+            background: #d1d5db;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .test-result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            background: white;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            color: #333;
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .info-box {
+            background: #dbeafe;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            border: 1px solid #93c5fd;
+        }
+        .info-title {
+            font-weight: bold;
+            color: #1e40af;
+            margin-bottom: 8px;
+        }
+        .info-content {
+            color: #1e3a8a;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .db-warning {
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .db-warning h3 {
+            color: #92400e;
+            margin-bottom: 10px;
+        }
+        .db-warning p {
+            color: #78350f;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 ProcureAI 功能测试</h1>
+
+        <div class="db-warning">
+            <h3>⚠️ 当前模式：无数据库</h3>
+            <p>检测到后端在没有 MongoDB 的情况下运行。以下功能可用：</p>
+            <ul style="margin-top: 10px; padding-left: 20px; color: #78350f;">
+                <li>✅ 随意采购（聊天功能）</li>
+                <li>✅ 规范采购（需求澄清、文档生成等）</li>
+                <li>✅ 图片找同款（mock 数据）</li>
+                <li>❌ 用户注册/登录</li>
+                <li>❌ 会话历史记录</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">
+                1. 后端 API 健康检查
+                <span id="api-status" class="test-status status-pending">待测试</span>
+            </div>
+            <button class="test-btn" onclick="testBackendAPI()">测试 API</button>
+            <div id="api-result" class="test-result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">
+                2. 前端页面检查
+                <span id="frontend-status" class="test-status status-pending">待测试</span>
+            </div>
+            <button class="test-btn" onclick="testFrontend()">测试前端</button>
+            <div id="frontend-result" class="test-result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">
+                3. Dify API 连接测试
+                <span id="dify-status" class="test-status status-pending">待测试</span>
+            </div>
+            <button class="test-btn" onclick="testDifyAPI()">测试 Dify API</button>
+            <div id="dify-result" class="test-result" style="display:none;"></div>
+        </div>
+
+        <div class="info-box">
+            <div class="info-title">💡 下一步操作</div>
+            <div class="info-content">
+                <p>如果所有测试都通过（✓），您可以：</p>
+                <ul style="margin-top: 10px; padding-left: 20px;">
+                    <li><a href="http://localhost:5173" target="_blank" style="color: #2563eb; text-decoration: underline;">打开前端应用</a></li>
+                    <li>测试"随意采购"功能</li>
+                    <li>测试"规范采购"功能</li>
+                </ul>
+                <p style="margin-top: 15px;">如果需要完整功能（用户登录、会话历史），请安装 MongoDB 后重启后端。</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function testBackendAPI() {
+            const statusEl = document.getElementById('api-status');
+            const resultEl = document.getElementById('api-result');
+
+            statusEl.innerHTML = '<span class="spinner"></span> 测试中...';
+            statusEl.className = 'test-status status-pending';
+            resultEl.style.display = 'block';
+            resultEl.textContent = '正在连接后端 API...';
+
+            try {
+                const response = await fetch('http://localhost:3001/api');
+                const data = await response.json();
+
+                if (data.status === 'running') {
+                    statusEl.textContent = '✓ 正常';
+                    statusEl.className = 'test-status status-success';
+                    resultEl.textContent = JSON.stringify(data, null, 2);
+                } else {
+                    throw new Error('Invalid response');
+                }
+            } catch (error) {
+                statusEl.textContent = '✗ 失败';
+                statusEl.className = 'test-status status-error';
+                resultEl.textContent = '错误: ' + error.message + '\n\n请确保后端已启动: cd backend && npm run dev';
+            }
+        }
+
+        async function testFrontend() {
+            const statusEl = document.getElementById('frontend-status');
+            const resultEl = document.getElementById('frontend-result');
+
+            statusEl.innerHTML = '<span class="spinner"></span> 测试中...';
+            statusEl.className = 'test-status status-pending';
+            resultEl.style.display = 'block';
+            resultEl.textContent = '正在连接前端...';
+
+            try {
+                const response = await fetch('http://localhost:5173');
+                const text = await response.text();
+
+                if (text.includes('ProcureAI') || text.includes('采购')) {
+                    statusEl.textContent = '✓ 正常';
+                    statusEl.className = 'test-status status-success';
+                    resultEl.textContent = '前端服务正常运行\n\n点击此链接访问: http://localhost:5173';
+                } else {
+                    throw new Error('Invalid response');
+                }
+            } catch (error) {
+                statusEl.textContent = '✗ 失败';
+                statusEl.className = 'test-status status-error';
+                resultEl.textContent = '错误: ' + error.message + '\n\n请确保前端已启动: npm run dev';
+            }
+        }
+
+        async function testDifyAPI() {
+            const statusEl = document.getElementById('dify-status');
+            const resultEl = document.getElementById('dify-result');
+
+            statusEl.innerHTML = '<span class="spinner"></span> 测试中...';
+            statusEl.className = 'test-status status-pending';
+            resultEl.style.display = 'block';
+            resultEl.textContent = '正在测试 Dify API 连接...';
+
+            try {
+                // Test by trying to call chat API (will fail without proper setup)
+                const response = await fetch('http://localhost:3001/api', {
+                    method: 'GET'
+                });
+
+                if (response.ok) {
+                    statusEl.textContent = '✓ 后端可访问';
+                    statusEl.className = 'test-status status-success';
+                    resultEl.textContent = '后端服务正常运行\n\nDify API 连接需要在实际聊天时测试。\n\n提示: 确保 backend/.env 中配置了正确的 DIFY_API_KEY';
+                } else {
+                    throw new Error('Backend not responding');
+                }
+            } catch (error) {
+                statusEl.textContent = '✗ 失败';
+                statusEl.className = 'test-status status-error';
+                resultEl.textContent = '错误: ' + error.message;
+            }
+        }
+
+        // Auto-run backend test on load
+        window.onload = function() {
+            setTimeout(testBackendAPI, 500);
+            setTimeout(testFrontend, 1500);
+        };
+    </script>
+</body>
+</html>

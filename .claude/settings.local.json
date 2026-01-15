@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)",
+      "Bash(npm run seed:*)",
+      "Bash(mongosh:*)",
+      "Bash(mongo:*)",
+      "Bash(node:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm start)",
+      "Bash(tasklist:*)",
+      "Bash(cmd:*)",
+      "Bash(wmic:*)",
+      "Bash(powershell:*)",
+      "Bash(curl:*)",
+      "Bash(npm install:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm run build:*)",
+      "Skill(frontend-design)",
+      "Skill(frontend-design:*)"
+    ]
+  }
+}
