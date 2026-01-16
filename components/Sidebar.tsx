@@ -222,7 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
            <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-2 opacity-60">
              <span>Powered by</span>
-             <span className="font-semibold text-slate-500">Dify</span>
+             <span className="font-semibold text-slate-500">安正咨询</span>
            </div>
         </div>
       </aside>

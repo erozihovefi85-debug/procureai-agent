@@ -1,10 +1,138 @@
 import express from 'express';
+import ExcelJS from 'exceljs';
+import multer from 'multer';
 const router = express.Router();
 import Product from '../models/Product.js';
 import { auth } from '../middleware/auth.js';
 
+// 配置 multer 用于文件上传
+const upload = multer({ dest: 'uploads/' });
+
 // 应用认证中间件到所有路由
 router.use(auth);
+
+// ==================== 特殊路由（必须在 /:id 之前） ====================
+
+// 导出商品到 Excel
+router.get('/export', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const products = await Product.find({ userId }).sort({ createdAt: -1 });
+
+    // 创建工作簿
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('商品心愿单');
+
+    // 设置列
+    worksheet.columns = [
+      { header: '商品名称', key: 'name', width: 30 },
+      { header: '品牌', key: 'brand', width: 15 },
+      { header: '型号', key: 'model', width: 15 },
+      { header: '价格', key: 'price', width: 12 },
+      { header: '货币', key: 'currency', width: 8 },
+      { header: '状态', key: 'status', width: 10 },
+      { header: '优先级', key: 'rating', width: 10 },
+      { header: '平台', key: 'platform', width: 15 },
+      { header: '商品链接', key: 'url', width: 40 },
+      { header: '图片链接', key: 'imageUrl', width: 40 },
+      { header: '描述', key: 'description', width: 30 },
+      { header: '分类', key: 'category', width: 15 },
+      { header: '创建时间', key: 'createdAt', width: 20 },
+    ];
+
+    // 添加数据
+    products.forEach(product => {
+      worksheet.addRow({
+        name: product.name || '',
+        brand: product.brand || '',
+        model: product.model || '',
+        price: product.price || 0,
+        currency: product.currency || 'CNY',
+        status: product.status || 'pending',
+        rating: product.rating || 3,
+        platform: product.platform || '',
+        url: product.url || '',
+        imageUrl: product.imageUrl || '',
+        description: product.description || '',
+        category: product.category || '',
+        createdAt: product.createdAt ? new Date(product.createdAt).toLocaleString('zh-CN') : '',
+      });
+    });
+
+    // 设置表头样式
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' }
+    };
+
+    // 生成 buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    // 设置响应头
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=products-${Date.now()}.xlsx`);
+
+    res.send(buffer);
+  } catch (error) {
+    console.error('Export products error:', error);
+    res.status(500).json({ error: '导出失败' });
+  }
+});
+
+// 从 Excel 导入商品
+router.post('/import', upload.single('file'), async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    if (!req.file) {
+      return res.status(400).json({ error: '请上传文件' });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(req.file.path);
+
+    const worksheet = workbook.worksheets[0];
+    const products = [];
+
+    // 跳过表头，从第2行开始
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // 跳过表头
+
+      const product = {
+        name: row.getCell(1).value || '',
+        brand: row.getCell(2).value || '',
+        model: row.getCell(3).value || '',
+        price: parseFloat(row.getCell(4).value) || 0,
+        currency: row.getCell(5).value || 'CNY',
+        status: row.getCell(6).value || 'pending',
+        rating: parseInt(row.getCell(7).value) || 3,
+        platform: row.getCell(8).value || '',
+        url: row.getCell(9).value || '',
+        imageUrl: row.getCell(10).value || '',
+        description: row.getCell(11).value || '',
+        category: row.getCell(12).value || '',
+        userId,
+      };
+
+      if (product.name) {
+        products.push(product);
+      }
+    });
+
+    // 批量插入
+    const result = await Product.insertMany(products);
+
+    res.json({
+      message: `成功导入 ${result.length} 个商品`,
+      imported: result.length
+    });
+  } catch (error) {
+    console.error('Import products error:', error);
+    res.status(500).json({ error: '导入失败' });
+  }
+});
 
 // ==================== 基础 CRUD ====================
 
