@@ -28,7 +28,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
-  title = "随心采购",
+  title = "私人买手助理",
   conversations,
   activeId,
   onSelect,
@@ -63,8 +63,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Header */}
         <div className="h-16 px-5 flex items-center justify-between border-b border-slate-100 shrink-0">
           <div className="flex items-center gap-3">
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-sm ${title === '随心采购' ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-blue-200' : 'bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-emerald-200'}`}>
-              {title === '随心采购' ? <SparklesIcon className="w-5 h-5" /> : <DocumentTextIcon className="w-5 h-5" />}
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-sm ${title === '私人买手助理' ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-blue-200' : 'bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-emerald-200'}`}>
+              {title === '私人买手助理' ? <SparklesIcon className="w-5 h-5" /> : <DocumentTextIcon className="w-5 h-5" />}
             </div>
             <h1 className="text-lg font-bold text-slate-800 tracking-tight">
               {title}
@@ -82,7 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4">
           <button 
             onClick={() => { onNew(); onClose(); }}
-            className={`w-full group flex items-center justify-center gap-2 text-white px-4 py-3 rounded-xl transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 ${title === '随心采购' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+            className={`w-full group flex items-center justify-center gap-2 text-white px-4 py-3 rounded-xl transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 ${title === '私人买手助理' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
           >
             <PlusIcon className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
             <span className="font-semibold text-sm">新建对话</span>
@@ -106,9 +106,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {Array.isArray(conversations) && conversations.map(conv => {
               const isActive = activeId === conv.id;
-              const activeBg = title === '随心采购' ? 'bg-blue-50 border-blue-100' : 'bg-emerald-50 border-emerald-100';
-              const activeText = title === '随心采购' ? 'text-blue-700' : 'text-emerald-700';
-              const activeIcon = title === '随心采购' ? 'text-blue-500' : 'text-emerald-500';
+              const activeBg = title === '私人买手助理' ? 'bg-blue-50 border-blue-100' : 'bg-emerald-50 border-emerald-100';
+              const activeText = title === '私人买手助理' ? 'text-blue-700' : 'text-emerald-700';
+              const activeIcon = title === '私人买手助理' ? 'text-blue-500' : 'text-emerald-500';
 
               return (
                 <div
@@ -169,7 +169,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </button>
             )}
 
-            {title === '随心采购' && onProductWishlist && (
+            {(title === '私家买手助理' || title === '私人买手助理') && onProductWishlist && (
               <button
                 onClick={onProductWishlist}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-pink-600 hover:bg-pink-50 hover:shadow-sm transition-all border border-transparent hover:border-slate-200"

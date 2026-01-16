@@ -30,13 +30,13 @@ import { useBackgroundTasks } from './hooks/useBackgroundTasks';
 const UI_CONFIG: Record<string, { placeholder: string; emptyTitle: string; emptyDesc: string }> = {
     'casual_main': {
         placeholder: "输入你的采购需求...",
-        emptyTitle: "欢迎使用随心采购",
-        emptyDesc: "我将为您提供智能采购建议，让购物更加轻松愉快！"
+        emptyTitle: "AI找出全网真实评价与低价，就找小美",
+        emptyDesc: "记得加入商品心愿单，让购物更加轻松愉快！"
     },
     'standard_keyword': {
         placeholder: "请详细描述您的采购需求，包括商品类型、数量、规格要求、预算范围、交付时间等信息...",
-        emptyTitle: "关键词提取",
-        emptyDesc: "智能分析采购文本，快速提取核心要素。"
+        emptyTitle: "AI驱动快速寻源，就找小帅",
+        emptyDesc: "智能细化采购清单，快速匹配可信供应商。"
     },
     'standard_docgen': {
         placeholder: "在此编辑采购需求文档内容...",
@@ -77,10 +77,58 @@ const App: React.FC = () => {
     tasks: backgroundTasks,
     addTask,
     completeTask,
-    removeTask,
-    clearCompletedTasks
+    removeTask
   } = useBackgroundTasks();
   const [notifications, setNotifications] = useState<ToastNotification[]>([]);
+  const [showBackgroundTasks, setShowBackgroundTasks] = useState(true);
+  const prevBackgroundTasksRef = useRef<typeof backgroundTasks>([]);
+  const notifiedTaskIdsRef = useRef<Set<string>>(new Set()); // 跟踪已通知的任务
+
+  // 监听任务完成，显示通知和重新显示指示器
+  useEffect(() => {
+    const prevTasks = prevBackgroundTasksRef.current;
+
+    // 检测是否有任务刚刚完成（从 running 变为 completed）
+    const newlyCompletedTasks = backgroundTasks.filter(task => {
+      const prevTask = prevTasks.find(t => t.id === task.id);
+      return prevTask?.status === 'running' && task.status === 'completed';
+    });
+
+    // 检测是否有新任务开始（之前不存在或不是运行状态，现在是运行状态）
+    const hasNewRunning = backgroundTasks.some(task => {
+      const prevTask = prevTasks.find(t => t.id === task.id);
+      return (!prevTask || prevTask.status !== 'running') && task.status === 'running';
+    });
+
+    // 如果有新完成的任务，显示通知并重新显示指示器
+    if (newlyCompletedTasks.length > 0) {
+      setShowBackgroundTasks(true);
+
+      newlyCompletedTasks.forEach(task => {
+        // 只为尚未通知的任务显示通知
+        if (!notifiedTaskIdsRef.current.has(task.id)) {
+          addNotification({
+            type: 'success',
+            title: '后台任务完成',
+            message: `"${task.title}" 已完成，点击右下角查看结果`,
+            duration: 5000
+          });
+          notifiedTaskIdsRef.current.add(task.id);
+        }
+      });
+    }
+
+    // 清理已删除任务的通知记录
+    const currentTaskIds = new Set(backgroundTasks.map(t => t.id));
+    notifiedTaskIdsRef.current = new Set([...notifiedTaskIdsRef.current].filter(id => currentTaskIds.has(id)));
+
+    // 如果有新任务开始且指示器被隐藏，显示指示器
+    if (hasNewRunning && !showBackgroundTasks) {
+      setShowBackgroundTasks(true);
+    }
+
+    prevBackgroundTasksRef.current = backgroundTasks;
+  }, [backgroundTasks, showBackgroundTasks]);
 
   // --- Shared View Logic ---
   const [sharedMessages, setSharedMessages] = useState<Message[] | null>(null);
@@ -125,8 +173,8 @@ const App: React.FC = () => {
     jumpToStage,
     resetWorkflow,
     checkForStageTransition,
-    manuallyAdvanceToStage,
-    updateStageData
+    updateStageData,
+    processHistoricalMessages
   } = useWorkflow();
 
   // --- Chat State ---
@@ -163,10 +211,13 @@ const App: React.FC = () => {
   }, [appMode, standardTab]);
 
   const currentMessages = useMemo(() => {
-    // Show messages for current context
-    // If no conversation is selected, still show the messages (for new conversation)
+    // If a conversation is selected, show its messages (cached by conversation ID)
+    if (currentConversationId) {
+      return messagesMap[currentConversationId] || [];
+    }
+    // Otherwise, show messages for current context (for new conversation)
     return messagesMap[currentContextId] || [];
-  }, [messagesMap, currentContextId]);
+  }, [messagesMap, currentContextId, currentConversationId]);
 
   const currentUiConfig = UI_CONFIG[currentContextId] || UI_CONFIG['casual_main'];
 
@@ -233,6 +284,12 @@ const App: React.FC = () => {
           return;
       }
 
+      // Permission check: casual mode also requires login
+      if (newMode === 'casual' && !user) {
+          setShowLoginModal(true);
+          return;
+      }
+
       // Permission check: admin requires admin role
       if (newMode === 'admin' && (!user || user.role !== 'ADMIN')) {
         alert('需要管理员权限');
@@ -242,10 +299,20 @@ const App: React.FC = () => {
       // When switching to chat modes (casual or standard), start with a fresh conversation
       if (newMode === 'casual' || newMode === 'standard') {
         setCurrentConversationId('');
+
+        // 切换到标准模式时，重置工作流状态
+        if (newMode === 'standard') {
+          resetWorkflow();
+        }
       }
 
       setAppMode(newMode);
       if (newTab) setStandardTab(newTab);
+
+      // 切换标准模式的标签页时，重置工作流状态
+      if (newMode === 'standard' && newTab) {
+        resetWorkflow();
+      }
   };
 
   const handleBackFromUserCenter = () => {
@@ -253,9 +320,12 @@ const App: React.FC = () => {
   };
 
   const handleUpdateMessages = (fn: (prev: Message[]) => Message[]) => {
+      // If a conversation is selected, update its messages
+      // Otherwise, update messages for current context (for new conversation)
+      const key = currentConversationId || currentContextId;
       setMessagesMap(prev => ({
           ...prev,
-          [currentContextId]: fn(prev[currentContextId] || [])
+          [key]: fn(prev[key] || [])
       }));
   };
 
@@ -263,38 +333,67 @@ const App: React.FC = () => {
     const contextId = targetContextId || currentContextId;
     setCurrentConversationId('');
     setMessagesMap(prev => ({ ...prev, [contextId]: [] }));
+
+    // 重置工作流状态到初始阶段
+    if (appMode === 'standard') {
+      resetWorkflow();
+    }
   };
 
   const handleSelectConversation = async (id: string) => {
-    const key = id;
+    console.log('[handleSelectConversation] Starting, conversationId:', id, 'appMode:', appMode);
 
     // Don't block switching - allow viewing any conversation even if streaming
-    // First, clear current view
-    setMessagesMap(prev => ({ ...prev, [currentContextId]: [] }));
+    // Set the selected conversation ID first
     setCurrentConversationId(id);
 
-    // Check if this conversation has messages in current context (cached)
-    const hasCachedMessages = messagesMap[currentContextId]?.length > 0;
+    // Use conversation ID as key for caching, not context ID
+    const conversationKey = id;
+    const currentLoadingState = conversationLoadingStates[conversationKey];
+
+    // Check if this conversation has cached messages
+    const hasCachedMessages = messagesMap[conversationKey]?.length > 0;
+    console.log('[handleSelectConversation] hasCachedMessages:', hasCachedMessages, 'currentLoadingState:', currentLoadingState);
 
     // Only fetch messages if not currently streaming OR if we don't have cached messages
-    const currentLoadingState = conversationLoadingStates[key];
     if (currentLoadingState !== LoadingState.STREAMING || !hasCachedMessages) {
+      console.log('[handleSelectConversation] Fetching messages from API');
       if (currentLoadingState !== LoadingState.STREAMING) {
-        setConversationLoadingStates(prev => ({ ...prev, [key]: LoadingState.UPLOADING }));
+        setConversationLoadingStates(prev => ({ ...prev, [conversationKey]: LoadingState.UPLOADING }));
       }
 
       try {
           const response = await conversationAPI.getMessages(id);
+          console.log('[handleSelectConversation] API response:', response.data.length, 'messages');
+
+          // Cache messages by conversation ID, not context ID
           setMessagesMap(prev => ({
               ...prev,
-              [currentContextId]: response.data
+              [conversationKey]: response.data
           }));
+
+          // 同步工作流状态
+          if (appMode === 'standard' && response.data.length > 0) {
+            console.log('[App] Syncing workflow state after loading conversation');
+            processHistoricalMessages(response.data);
+          } else {
+            console.log('[App] Skipping workflow sync - appMode:', appMode, 'messageCount:', response.data.length);
+          }
       } catch (e) {
           console.error("Failed to load conversation", e);
       } finally {
-          if (currentLoadingState !== LoadingState.STREAMING) {
-            setConversationLoadingStates(prev => ({ ...prev, [key]: LoadingState.IDLE }));
-          }
+        if (currentLoadingState !== LoadingState.STREAMING) {
+          setConversationLoadingStates(prev => ({ ...prev, [conversationKey]: LoadingState.IDLE }));
+        }
+      }
+    } else {
+      console.log('[handleSelectConversation] Using cached messages, hasCachedMessages:', hasCachedMessages);
+      if (hasCachedMessages && appMode === 'standard') {
+        // 即使有缓存的消息，也要同步工作流状态
+        console.log('[App] Syncing workflow state for cached conversation');
+        processHistoricalMessages(messagesMap[conversationKey]);
+      } else {
+        console.log('[App] Not syncing workflow - hasCachedMessages:', hasCachedMessages, 'appMode:', appMode);
       }
     }
   };
@@ -395,10 +494,9 @@ const App: React.FC = () => {
         // Complete background task
         completeTask(taskId, 'completed', { conversationId: newConversationId || targetConvId });
 
-        if (!currentConversationId && newConversationId) {
-            setCurrentConversationId(newConversationId);
-            loadConversations();
-        }
+        // 不自动切换到新对话，让用户自己选择查看
+        // 只是在后台加载对话列表
+        loadConversations();
       },
       (error) => {
         setConversationLoadingStates(prev => ({ ...prev, [key]: LoadingState.ERROR }));
@@ -433,19 +531,19 @@ const App: React.FC = () => {
     localStorage.removeItem('procureai_auth_user');
   };
 
-  // 处理需求清单确认并推进到深度寻源阶段
-  const handleConfirmRequirementList = () => {
-    if (workflowState.currentStage === 'requirement_list') {
-      manuallyAdvanceToStage('deep_sourcing' as any);
-    }
-  };
-
   // 处理供应商收藏后的工作流推进
   const handleSupplierFavorited = () => {
     if (workflowState.currentStage === 'deep_sourcing') {
       // 推进到供应商收藏阶段
       advanceToNextStage({ favorited: true });
     }
+  };
+
+  // 处理商品加入心愿单后的操作
+  const handleProductBookmarked = () => {
+    // 小美界面的商品心愿单不涉及工作流推进
+    // 可以在这里添加其他操作，如刷新心愿单统计等
+    console.log('Product added to wishlist');
   };
 
   // 处理供应商约谈后的工作流推进
@@ -468,45 +566,27 @@ const App: React.FC = () => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
-  // 监听后台任务完成，显示通知
+  // 处理历史消息，同步工作流状态
   useEffect(() => {
-    backgroundTasks.forEach(task => {
-      if (task.status === 'completed' || task.status === 'failed') {
-        // 检查是否已经显示过通知
-        const notificationKey = `notified-${task.id}`;
-        const alreadyNotified = sessionStorage.getItem(notificationKey);
+    console.log('[App] Workflow sync useEffect triggered, appMode:', appMode, 'currentMessages.length:', currentMessages.length);
 
-        if (!alreadyNotified) {
-          const notification: Omit<ToastNotification, 'id'> = {
-            type: task.status === 'completed' ? 'task_complete' : 'error',
-            title: task.status === 'completed' ? 'AI 回复完成' : '任务失败',
-            message: task.title,
-            duration: 0, // 不自动关闭
-            action: task.status === 'completed' && task.conversationId ? {
-              label: '查看结果',
-              onClick: () => {
-                // 根据 contextId 切换到正确的模式
-                if (task.contextId) {
-                  if (task.contextId === 'casual_main') {
-                    setAppMode('casual');
-                  } else if (task.contextId.startsWith('standard_')) {
-                    const tab = task.contextId.replace('standard_', '');
-                    setStandardTab(tab);
-                    setAppMode('standard');
-                  }
-                }
-                setCurrentConversationId(task.conversationId);
-                removeNotification(`notification-${task.id}`);
-              }
-            } : undefined
-          };
+    // 只在标准模式下处理
+    if (appMode !== 'standard') {
+      console.log('[App] Skipping workflow sync: not in standard mode');
+      return;
+    }
 
-          addNotification(notification);
-          sessionStorage.setItem(notificationKey, 'true');
-        }
-      }
-    });
-  }, [backgroundTasks, addNotification, removeNotification]);
+    // 获取当前消息列表
+    const messages = currentMessages;
+    if (!messages || messages.length === 0) {
+      console.log('[App] Skipping workflow sync: no messages');
+      return;
+    }
+
+    // 处理历史消息以更新工作流状态
+    console.log('[App] Processing historical messages for workflow sync...');
+    processHistoricalMessages(messages);
+  }, [appMode, currentConversationId, currentMessages.length, processHistoricalMessages]); // 保持依赖完整
 
   // --- Render Shared View ---
   if (sharedMessages) {
@@ -522,11 +602,12 @@ const App: React.FC = () => {
                   </a>
               </header>
               <div className="w-full max-w-4xl flex-1 flex flex-col bg-white shadow-lg min-h-0 my-4 rounded-xl overflow-hidden border border-slate-200">
-                   <ChatArea 
+                   <ChatArea
                       messages={sharedMessages}
                       isLoading={LoadingState.IDLE}
                       onSend={() => {}}
                       readOnly={true}
+                      userId={user?.id}
                       emptyState={{
                           title: "无分享内容",
                           description: ""
@@ -702,7 +783,7 @@ const App: React.FC = () => {
     );
   }
 
-  const sidebarTitle = appMode === 'standard' ? '企业寻源数字监理' : '随心采购';
+  const sidebarTitle = appMode === 'standard' ? '企业寻源数字监理' : '私家买手助理';
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
@@ -749,7 +830,9 @@ const App: React.FC = () => {
                     onStageTransition={checkForStageTransition}
                     updateStageData={updateStageData}
                     onSupplierFavorited={handleSupplierFavorited}
-                    onConfirmRequirementList={handleConfirmRequirementList}
+                    onProductBookmarked={handleProductBookmarked}
+                    userId={user?.id}
+                    mode={appMode}
                 />
             </StandardView>
         ) : (
@@ -783,6 +866,8 @@ const App: React.FC = () => {
                             description: currentUiConfig.emptyDesc
                         }}
                         conversationId={currentConversationId}
+                        onProductBookmarked={handleProductBookmarked}
+                        userId={user?.id}
                         mode={appMode}
                     />
                 </main>
@@ -798,24 +883,30 @@ const App: React.FC = () => {
       />
 
       {/* 后台任务指示器 */}
-      <BackgroundTasksIndicator
-        tasks={backgroundTasks}
-        onTaskClick={(task) => {
-          if (task.status === 'completed' && task.conversationId) {
-            // 根据 contextId 切换到正确的模式
-            if (task.contextId) {
-              if (task.contextId === 'casual_main') {
-                setAppMode('casual');
-              } else if (task.contextId.startsWith('standard_')) {
-                const tab = task.contextId.replace('standard_', '');
-                setStandardTab(tab);
-                setAppMode('standard');
+      {showBackgroundTasks && (
+        <BackgroundTasksIndicator
+          tasks={backgroundTasks}
+          onDismiss={() => {
+            // 只隐藏前端弹窗，不停止后台任务
+            setShowBackgroundTasks(false);
+          }}
+          onTaskClick={(task) => {
+            if (task.status === 'completed' && task.conversationId) {
+              // 根据 contextId 切换到正确的模式
+              if (task.contextId) {
+                if (task.contextId === 'casual_main') {
+                  setAppMode('casual');
+                } else if (task.contextId.startsWith('standard_')) {
+                  const tab = task.contextId.replace('standard_', '');
+                  setStandardTab(tab);
+                  setAppMode('standard');
+                }
               }
+              setCurrentConversationId(task.conversationId);
             }
-            setCurrentConversationId(task.conversationId);
-          }
-        }}
-      />
+          }}
+        />
+      )}
     </div>
   );
 };

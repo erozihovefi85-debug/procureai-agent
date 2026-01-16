@@ -19,8 +19,8 @@ const productSchema = new mongoose.Schema({
   description: String,
   price: {
     type: Number,
-    required: true,
-    min: 0
+    min: 0,
+    default: 0
   },
   originalPrice: {
     type: Number,
@@ -30,10 +30,7 @@ const productSchema = new mongoose.Schema({
     type: String,
     default: 'CNY'
   },
-  purchaseUrl: {
-    type: String,
-    required: true
-  },
+  purchaseUrl: String, // 改为可选，因为AI可能不提供链接
   imageUrl: String,
   platform: String,
 

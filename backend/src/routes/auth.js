@@ -9,9 +9,12 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
+    console.log('Register attempt:', { name, email }); // 添加日志
+
     // Check if user already exists
     const userExists = await User.findOne({ email });
     if (userExists) {
+      console.log('User already exists:', email);
       return res.status(400).json({ message: 'User already exists' });
     }
 
@@ -23,6 +26,8 @@ router.post('/register', async (req, res) => {
       role: 'Free',
       credits: 100, // Free tier starting credits
     });
+
+    console.log('User created successfully:', user._id);
 
     // Generate token
     const token = generateToken(user._id);
@@ -40,6 +45,18 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Register error:', error);
+
+    // 处理MongoDB唯一索引错误
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // 处理验证错误
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((e) => e.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
+
     res.status(500).json({ message: 'Server error' });
   }
 });

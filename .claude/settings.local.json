@@ -21,7 +21,9 @@
       "Bash(npm ls:*)",
       "Bash(npm run build:*)",
       "Skill(frontend-design)",
-      "Skill(frontend-design:*)"
+      "Skill(frontend-design:*)",
+      "Bash(dir:*)",
+      "mcp__zai-mcp-server__extract_text_from_screenshot"
     ]
   }
 }

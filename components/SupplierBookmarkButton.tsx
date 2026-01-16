@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookmarkIcon, BookmarkCheckIcon, ChevronDownIcon, ChevronUpIcon } from './Icons';
 import { supplierAPI } from '../services/api';
 
@@ -21,17 +21,48 @@ interface SupplierBookmarkButtonProps {
     }>;
   };
   conversationId?: string;
+  userId?: string;
   onBookmarked?: (supplier: any) => void;
 }
 
 const SupplierBookmarkButton: React.FC<SupplierBookmarkButtonProps> = ({
   supplierInfo,
   conversationId,
+  userId,
   onBookmarked,
 }) => {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // 检查供应商是否已在收藏夹中
+  useEffect(() => {
+    const checkIfBookmarked = async () => {
+      if (!userId) {
+        console.log('[SupplierBookmarkButton] No userId, skipping bookmark check');
+        return;
+      }
+
+      try {
+        // console.log('[SupplierBookmarkButton] Checking bookmark for:', supplierInfo.name, 'userId:', userId);
+        const response = await supplierAPI.getAll({ page: 1, limit: 100 });
+        // console.log('[SupplierBookmarkButton] All suppliers:', response.data?.data?.length, 'items');
+
+        const existingSupplier = response.data?.data?.find((s: any) => {
+          const match = s.name === supplierInfo.name && s.userId === userId;
+          // console.log('[SupplierBookmarkButton] Comparing:', s.name, 'with', supplierInfo.name, 'match:', match);
+          return match;
+        });
+
+        // console.log('[SupplierBookmarkButton] Existing supplier found:', !!existingSupplier);
+        setIsBookmarked(!!existingSupplier);
+      } catch (error) {
+        console.error('[SupplierBookmarkButton] Check bookmark status error:', error);
+      }
+    };
+
+    checkIfBookmarked();
+  }, [supplierInfo.name, userId]);
 
   const handleBookmark = async () => {
     if (isBookmarked || isLoading) return;
@@ -86,9 +117,9 @@ const SupplierBookmarkButton: React.FC<SupplierBookmarkButtonProps> = ({
   return (
     <div className="my-4 border border-blue-200 rounded-lg bg-blue-50/50 overflow-hidden">
       {/* 折叠标题栏 */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3 flex-1">
-          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+      <div className="flex items-center justify-between px-3 md:px-4 py-3">
+        <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
             <span className="text-blue-600 text-sm font-semibold">供</span>
           </div>
           <div className="flex-1 min-w-0">
@@ -103,17 +134,18 @@ const SupplierBookmarkButton: React.FC<SupplierBookmarkButtonProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-2 shrink-0">
           {isBookmarked ? (
-            <div className="flex items-center gap-1 text-green-600 px-3 py-1.5 rounded-lg bg-green-50 text-sm font-medium">
+            <div className="flex items-center gap-1 text-green-600 px-2 md:px-3 py-1.5 rounded-lg bg-green-50 text-xs md:text-sm font-medium">
               <BookmarkCheckIcon className="w-4 h-4" />
-              <span>已收藏</span>
+              <span className="hidden sm:inline">已收藏</span>
+              <span className="sm:hidden">已收藏</span>
             </div>
           ) : (
             <button
               onClick={handleBookmark}
               disabled={isLoading}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-all ${
                 isLoading
                   ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                   : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md hover:-translate-y-0.5'
@@ -139,18 +171,18 @@ const SupplierBookmarkButton: React.FC<SupplierBookmarkButtonProps> = ({
 
       {/* 展开的详细信息 */}
       {isExpanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-blue-100 pt-3">
+        <div className="px-3 md:px-4 pb-4 space-y-3 border-t border-blue-100 pt-3">
           {/* 基本信息 */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3 text-sm">
             {supplierInfo.foundedDate && (
               <div>
-                <span className="text-slate-500">成立时间：</span>
+                <span className="text-slate-500 text-xs">成立时间：</span>
                 <span className="text-slate-700">{supplierInfo.foundedDate}</span>
               </div>
             )}
             {supplierInfo.contactInfo?.person && (
               <div>
-                <span className="text-slate-500">联系人：</span>
+                <span className="text-slate-500 text-xs">联系人：</span>
                 <span className="text-slate-700">{supplierInfo.contactInfo.person}</span>
               </div>
             )}

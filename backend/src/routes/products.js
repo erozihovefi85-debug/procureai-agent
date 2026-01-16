@@ -223,17 +223,30 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log('[Create Product] Request body:', JSON.stringify(req.body, null, 2));
+
     const productData = {
       ...req.body,
       userId
     };
 
+    console.log('[Create Product] Product data:', JSON.stringify(productData, null, 2));
+
     const product = new Product(productData);
     await product.save();
 
+    console.log('[Create Product] Success:', product._id);
     res.status(201).json(product);
   } catch (error) {
-    console.error('Create product error:', error);
+    console.error('[Create Product] Error:', error);
+
+    // 处理验证错误
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((e) => e.message);
+      console.error('[Create Product] Validation errors:', messages);
+      return res.status(400).json({ error: messages.join(', ') });
+    }
+
     res.status(500).json({ error: '创建商品失败' });
   }
 });

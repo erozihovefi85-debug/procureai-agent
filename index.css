@@ -10,6 +10,29 @@ html, body, #root {
 
 body {
   font-family: 'Inter', sans-serif;
+  /* 防止移动端橡皮筋效果 */
+  overscroll-behavior-y: none;
+  /* 优化移动端触摸滚动 */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  /* 防止移动端双击缩放 */
+  * {
+    touch-action: manipulation;
+  }
+
+  /* 优化文本选择 */
+  body {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* 移动端输入框优化 */
+  input, textarea, select {
+    font-size: 16px !important; /* 防止 iOS 自动缩放 */
+  }
 }
 
 /* Custom scrollbar for webkit */
@@ -49,4 +72,77 @@ body {
 .custom-table-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #94a3b8 #f1f5f9;
+}
+
+/* 移动端表格适配 */
+@media (max-width: 768px) {
+  .custom-table-scrollbar {
+    /* 移动端更大的滚动提示 */
+    scrollbar-width: auto;
+  }
+
+  /* 修复移动端表格内容换行 */
+  table {
+    font-size: 0.875rem;
+  }
+
+  table th,
+  table td {
+    /* 移动端允许内容换行，而不是截断 */
+    white-space: normal !important;
+    word-wrap: break-word;
+    word-break: break-word;
+    min-width: 80px;
+    padding: 0.75rem 0.5rem !important;
+  }
+
+  /* 表格列在移动端自动调整宽度 */
+  table {
+    table-layout: auto;
+  }
+}
+
+/* 移动端 prose 适配 */
+@media (max-width: 768px) {
+  .prose {
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+
+  .prose p {
+    margin-bottom: 0.75rem;
+  }
+
+  .prose ul, .prose ol {
+    padding-left: 1.25rem;
+  }
+
+  .prose li {
+    margin-bottom: 0.5rem;
+  }
+
+  /* 移动端代码块适配 */
+  .prose pre {
+    font-size: 0.8125rem;
+    padding: 0.75rem;
+    overflow-x: auto;
+    max-width: 100vw;
+  }
+
+  .prose code {
+    font-size: 0.8125rem;
+  }
+}
+
+/* 微信内置浏览器特殊适配 */
+@media (max-width: 768px) {
+  /* 检测微信浏览器 */
+  body {
+    min-width: 320px;
+  }
+
+  /* 修复微信浏览器中的滚动问题 */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
 }

@@ -34,6 +34,7 @@ export interface ParsedSupplier {
  */
 export const renderSupplierBookmarks = (
   content: string,
+  userId?: string,
   conversationId?: string,
   onBookmarked?: (supplier: any) => void
 ): React.ReactNode => {
@@ -50,6 +51,7 @@ export const renderSupplierBookmarks = (
           key={`${supplier.name}-${index}`}
           supplierInfo={supplier}
           conversationId={conversationId}
+          userId={userId}
           onBookmarked={onBookmarked}
         />
       ))}
@@ -142,45 +144,71 @@ const parseJsonSuppliers = (content: string): ParsedSupplier[] => {
 const parseTableSuppliers = (content: string): ParsedSupplier[] => {
   const suppliers: ParsedSupplier[] = [];
 
-  // 检测是否包含供应商表格
-  const tablePattern = /\|[\s\S]*?\|[\s\S]*?\|/g;
-  const tables = content.match(tablePattern) || [];
+  // 按行分割，查找完整的表格块
+  const lines = content.split('\n');
+  const tableBlocks: string[][] = [];
+  let currentTable: string[] = [];
 
-  for (const table of tables) {
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    // 检测是否是表格行（以 | 开头和结尾）
+    if (trimmedLine.startsWith('|') && trimmedLine.endsWith('|')) {
+      currentTable.push(line);
+    } else if (currentTable.length > 0) {
+      // 表格结束，保存当前表格块（至少3行：表头、分隔线、数据行）
+      if (currentTable.length >= 3) {
+        tableBlocks.push(currentTable);
+      }
+      currentTable = [];
+    }
+  }
+
+  // 处理最后一个表格
+  if (currentTable.length >= 3) {
+    tableBlocks.push(currentTable);
+  }
+
+  for (const tableLines of tableBlocks) {
     try {
-      const lines = table.trim().split('\n').filter(line => line.trim());
-      if (lines.length < 2) continue;
-
       // 解析表头
-      const headers = lines[0]
+      const headers = tableLines[0]
         .split('|')
         .map(h => h.trim())
         .filter(h => h);
 
       // 查找包含供应商相关信息的列
       const nameCol = headers.findIndex(h =>
-        h.includes('名称') || h.includes('name') || h.includes('供应商') || h.includes('公司')
+        h.includes('供应商全称') || h.includes('名称') || h.includes('name') || h.includes('供应商') || h.includes('公司') || h.includes('企业')
       );
       const directionCol = headers.findIndex(h =>
-        h.includes('业务') || h.includes('direction') || h.includes('主营')
+        h.includes('业务') || h.includes('direction') || h.includes('主营') || h.includes('经营范围')
       );
       const contactCol = headers.findIndex(h =>
-        h.includes('联系') || h.includes('contact') || h.includes('电话') || h.includes('phone')
+        h.includes('联系方式') || h.includes('联系') || h.includes('contact') || h.includes('电话') || h.includes('phone')
+      );
+      const websiteCol = headers.findIndex(h =>
+        h.includes('官网') || h.includes('网站') || h.includes('website') || h.includes('url')
+      );
+      const sourceCol = headers.findIndex(h =>
+        h.includes('信源') || h.includes('来源') || h.includes('source')
       );
 
       if (nameCol === -1) continue;
 
-      // 解析数据行（跳过分隔行）
-      for (let i = 2; i < lines.length; i++) {
-        const cells = lines[i]
+      // 解析数据行（跳过分隔行，从第2行开始）
+      for (let i = 2; i < tableLines.length; i++) {
+        const cells = tableLines[i]
           .split('|')
           .map(c => c.trim())
           .filter(c => c);
 
         if (cells.length <= nameCol) continue;
 
+        const supplierName = cells[nameCol];
+        if (!supplierName || supplierName.length < 2) continue;
+
         const supplier: ParsedSupplier = {
-          name: cells[nameCol],
+          name: supplierName,
         };
 
         if (directionCol !== -1 && cells[directionCol]) {
@@ -189,7 +217,15 @@ const parseTableSuppliers = (content: string): ParsedSupplier[] => {
 
         if (contactCol !== -1 && cells[contactCol]) {
           supplier.contactInfo = {
+            ...supplier.contactInfo,
             person: cells[contactCol],
+          };
+        }
+
+        if (websiteCol !== -1 && cells[websiteCol]) {
+          supplier.contactInfo = {
+            ...supplier.contactInfo,
+            address: cells[websiteCol], // 暂时用 address 字段存储官网
           };
         }
 
@@ -197,6 +233,7 @@ const parseTableSuppliers = (content: string): ParsedSupplier[] => {
       }
     } catch (e) {
       // 表格解析失败，忽略
+      console.error('[parseTableSuppliers] Table parse error:', e);
     }
   }
 
@@ -274,14 +311,16 @@ const parseTextSuppliers = (content: string): ParsedSupplier[] => {
  */
 export const containsSupplierInfo = (content: string): boolean => {
   const keywords = [
-    '供应商',
-    '推荐',
-    '公司',
-    '企业',
-    'manufacturer',
-    'supplier',
+    '供应商全称',
+    '联系方式',
+    '官网',
+    '信源',
   ];
 
-  return keywords.some(keyword => content.includes(keyword)) &&
-         parseSuppliersFromContent(content).length > 0;
+  const hasKeywords = keywords.some(keyword => content.includes(keyword));
+
+  if (!hasKeywords) return false;
+
+  const suppliers = parseSuppliersFromContent(content);
+  return suppliers.length > 0;
 };

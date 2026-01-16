@@ -339,7 +339,7 @@ const HomeView: React.FC<HomeViewProps> = ({ onSelectMode, onLoginRequest, onGoT
           {/* 主体内容 */}
           <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6 text-center pt-28 pb-10">
               <div className="mb-12 animate-fadeIn">
-                <h1 className="text-4xl font-extrabold text-slate-800 mb-3 tracking-tight">AI采购助手</h1>
+                <h1 className="text-4xl font-extrabold text-slate-800 mb-3 tracking-tight">AI采购助手天团</h1>
                 <p className="text-slate-500 text-lg md:text-xl font-light">既是小助理，亦是大专家</p>
               </div>
 
@@ -425,7 +425,7 @@ const HomeView: React.FC<HomeViewProps> = ({ onSelectMode, onLoginRequest, onGoT
                       买手助理小美
                     </h3>
                     <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-                      您的私人买手，帮你遍历小红书，找出真实商品评价，并深入全网比价，帮您轻松完成购买决策。
+                      您的私人买手，帮你遍历小红书等各大网站，找出真实商品评价，并深入全网比价，帮您轻松完成购买决策。
                     </p>
                     <ul className="space-y-2 text-slate-500 text-sm mb-6">
                       <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>个性化推荐，发现好物</li>

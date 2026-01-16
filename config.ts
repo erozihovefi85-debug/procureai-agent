@@ -4,7 +4,7 @@
 export const API_BASE_URL = 'https://api.dify.ai/v1';
 
 // Backend API URL - used by frontend for all operations
-export const BACKEND_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+export const BACKEND_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002/api';
 
 // --- User Identity Management ---
 
@@ -46,7 +46,7 @@ export const CURRENT_USER_ID = initializeUser();
 // 请在此处将 'YOUR_..._KEY' 替换为您 Dify 平台对应应用的实际 API Key
 // key 对应 App.tsx 中的 contextId
 const CONTEXT_API_KEYS: Record<string, string | undefined> = {
-    // 随心采购 (Casual Mode)
+    // 私家买手助理 (Casual Mode)
     'casual_main': 'app-ay5UT5TnYR83d2guU5enM4oG',
     
     // 规范采购 (Standard Mode) - 各个子功能对应不同的应用 ID
