@@ -4,7 +4,7 @@
 export const API_BASE_URL = 'https://api.dify.ai/v1';
 
 // Backend API URL - used by frontend for all operations
-export const BACKEND_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002/api';
+export const BACKEND_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // --- User Identity Management ---
 
