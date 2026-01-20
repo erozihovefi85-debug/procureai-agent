@@ -9,12 +9,12 @@ import { WorkflowState, WorkflowStage } from '../types/workflow';
 import {
     SendIcon, PaperclipIcon, FileIcon, UserIcon, RobotIcon, StopIcon, CopyIcon,
     CheckIcon, ArrowUpIcon, CloseIcon, DownloadIcon, LoaderIcon, ShareIcon,
-    CheckCircleIcon, CircleIcon, LinkIcon, ShareSquareIcon
+    CheckCircleIcon, CircleIcon, LinkIcon, ShareSquareIcon, UploadIcon
 } from './Icons';
 import { API_BASE_URL } from '../config';
 import { renderSupplierBookmarks, containsSupplierInfo } from '../utils/supplierParser';
 import { renderProductBookmarks, containsProductInfo } from '../utils/productParser';
-import { extractRequirementListWithCategory, generateRequirementListExcelWithTemplate } from '../services/siliconflowAPI';
+import { extractRequirementListWithCategory, generateRequirementListExcelWithTemplate, extractRequirementListWithSelectedCategory, parseUploadedRequirementExcel } from '../services/siliconflowAPI';
 import Avatar from './Avatar';
 import WorkflowNavigation from './WorkflowNavigation';
 
@@ -121,9 +121,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const [isAutoScroll, setIsAutoScroll] = useState(true);
   const [stageTransitionNotification, setStageTransitionNotification] = useState<string | null>(null);
   const [isExtractingRequirements, setIsExtractingRequirements] = useState(false);
+  const [isParsingExcel, setIsParsingExcel] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const excelUploadInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -205,8 +207,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                    content.includes('报告！以下是为您生成的采购需求清单') ||
                    content.includes('采购需求清单')) {
           detectedStage = WorkflowStage.REQUIREMENT_LIST;
-        } else if (content.includes('已进入**初步寻源**') ||
-                   content.includes('开始初步寻源') ||
+        } else if (content.includes('已进入**初步调研**') ||
+                   content.includes('开始初步调研') ||
                    content.includes('调研分析结果') ||
                    content.includes('基于以上分析')) {
           detectedStage = WorkflowStage.PRELIMINARY_SOURCING;
@@ -284,52 +286,116 @@ const ChatArea: React.FC<ChatAreaProps> = ({
 
     try {
       setIsExtractingRequirements(true);
-      showNotification('正在从对话中提取需求清单并识别采购品类...', 'success');
 
-      console.log('[handleDownloadRequirementList] Starting extraction with category identification...');
+      // 获取预选的品类代码
+      const selectedCategoryCode = sessionStorage.getItem('selectedCategoryCode');
 
-      // 使用后端API提取需求清单并识别采购品类
-      const requirementListData = await extractRequirementListWithCategory(
-        messages.map(m => ({ role: m.role, content: m.content }))
-      );
+      if (selectedCategoryCode) {
+        // 使用预选品类模板提取需求
+        showNotification('正在从对话中提取需求清单...', 'success');
+        console.log('[handleDownloadRequirementList] Using selected category:', selectedCategoryCode);
 
-      if (!requirementListData || !requirementListData.items || requirementListData.items.length === 0) {
-        showNotification('未能从对话中提取到需求清单，请确保对话包含明确的采购需求', 'error');
-        return;
+        const requirementListData = await extractRequirementListWithSelectedCategory(
+          messages.map(m => ({ role: m.role, content: m.content })),
+          selectedCategoryCode
+        );
+
+        console.log('[handleDownloadRequirementList] Received data:', requirementListData);
+
+        if (!requirementListData) {
+          console.error('[handleDownloadRequirementList] No data returned from API');
+          showNotification('提取需求清单失败，请重试', 'error');
+          return;
+        }
+
+        console.log('[handleDownloadRequirementList] Extracted requirements:', requirementListData);
+
+        // 使用品类模板生成Excel（即使需求列表为空也可以生成空白模板）
+        const blob = await generateRequirementListExcelWithTemplate(
+          {
+            items: requirementListData.items || [],
+            projectSummary: requirementListData.projectSummary || { evaluationCriteria: '未从对话中提取到需求清单' },
+          },
+          requirementListData.category.code
+        );
+
+        // 获取文件名
+        const categoryName = requirementListData.category?.name || '需求清单';
+        const fileName = `${categoryName}-${Date.now()}.xlsx`;
+
+        // 下载文件
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        const itemCount = (requirementListData.items || []).length;
+        showNotification(`成功生成${categoryName}，包含${itemCount}项需求！`, 'success');
+      } else {
+        // 没有预选品类，提示用户先选择品类
+        showNotification('请先返回首页选择采购品类', 'error');
       }
-
-      console.log('[handleDownloadRequirementList] Extracted requirements:', requirementListData);
-      console.log('[handleDownloadRequirementList] Procurement category:', requirementListData.procurement_category);
-
-      // 使用品类模板生成Excel
-      const blob = await generateRequirementListExcelWithTemplate(
-        {
-          items: requirementListData.items,
-          projectSummary: requirementListData.projectSummary,
-        },
-        requirementListData.procurement_category.code
-      );
-
-      // 获取文件名（使用品类名称）
-      const categoryName = requirementListData.procurement_category.name || '需求清单';
-      const fileName = `${categoryName}-${Date.now()}.xlsx`;
-
-      // 下载文件
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      showNotification(`成功生成${categoryName}，包含${requirementListData.items.length}项需求！`, 'success');
     } catch (error) {
-      console.error('Download requirement list error:', error);
+      console.error('[handleDownloadRequirementList] Error occurred:', error);
+      console.error('[handleDownloadRequirementList] Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined
+      });
       showNotification('生成需求清单失败，请重试', 'error');
     } finally {
       setIsExtractingRequirements(false);
+    }
+  };
+
+  // 处理上传修改后的需求清单Excel
+  const handleUploadModifiedExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!userId) {
+      showNotification('请先登录', 'error');
+      return;
+    }
+
+    try {
+      setIsParsingExcel(true);
+      showNotification('正在解析需求清单...', 'success');
+
+      console.log('[handleUploadModifiedExcel] Parsing file:', file.name);
+
+      // 调用API解析Excel
+      const result = await parseUploadedRequirementExcel(file);
+
+      if (!result || !result.success) {
+        showNotification('解析需求清单失败', 'error');
+        return;
+      }
+
+      console.log('[handleUploadModifiedExcel] Parsed result:', result);
+
+      // 将解析后的结构化文本发送给Dify进行下一轮对话
+      const structuredText = result.data.structuredText;
+      const userMessage = `我已经修改了需求清单，请查看以下更新后的需求：\n\n${structuredText}\n\n请基于这些需求开始深度寻源。`;
+
+      // 通过onSend发送消息给Dify
+      onSend(userMessage, []);
+
+      showNotification(`成功解析${result.data.itemCount}项需求，正在发送给小帅...`, 'success');
+
+    } catch (error) {
+      console.error('[handleUploadModifiedExcel] Error:', error);
+      showNotification('上传需求清单失败，请重试', 'error');
+    } finally {
+      setIsParsingExcel(false);
+      // 重置文件输入
+      if (excelUploadInputRef.current) {
+        excelUploadInputRef.current.value = '';
+      }
     }
   };
 
@@ -373,28 +439,35 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           const displayContent = cleanDSML(msg.content);
           const showBubble = displayContent.trim() !== "" || !!msg.isTyping;
           const isSelected = selectedMessageIds.has(msg.id);
+          // 检测是否为需求清单表格（支持多种表格格式）
+          const hasStandardTable = displayContent.includes('|') && displayContent.includes('---');
+          const hasCustomTable = displayContent.includes('│') || displayContent.includes('┃'); // 全角或制表符竖线
+          const isRequirementList = msg.role === 'assistant' && (hasStandardTable || hasCustomTable);
 
           return (
-            <div key={msg.id} className={`flex items-start gap-3 max-w-4xl mx-auto group relative transition-all duration-300 ${isSelectionMode ? 'cursor-pointer' : ''} ${msg.role === 'user' ? 'flex-row-reverse' : ''}`} onClick={() => isSelectionMode && toggleMessageSelection(msg.id)}>
+            <div key={msg.id} className={`flex items-start gap-3 ${isRequirementList ? 'w-full' : 'max-w-4xl mx-auto'} group relative transition-all duration-300 ${isSelectionMode ? 'cursor-pointer' : ''} ${msg.role === 'user' ? 'flex-row-reverse' : ''}`} onClick={() => isSelectionMode && toggleMessageSelection(msg.id)}>
               {isSelectionMode && (
                   <div className="flex items-center self-center shrink-0">
                       {isSelected ? <div className="text-blue-600"><CheckCircleIcon className="w-6 h-6 fill-blue-50" /></div> : <div className="text-slate-300 hover:text-slate-400"><CircleIcon className="w-6 h-6" /></div>}
                   </div>
               )}
 
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-transparent'}`}>
-                {msg.role === 'user' ? (
-                  <UserIcon className="w-5 h-5" />
-                ) : mode === 'standard' ? (
-                  <Avatar type="xiaoshuai" size="md" />
-                ) : mode === 'casual' ? (
-                  <Avatar type="xiaomei" size="md" />
-                ) : (
-                  <RobotIcon className="w-5 h-5" />
-                )}
-              </div>
+              {/* 需求清单表格消息不显示头像 */}
+              {!isRequirementList && (
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-transparent'}`}>
+                  {msg.role === 'user' ? (
+                    <UserIcon className="w-5 h-5" />
+                  ) : mode === 'standard' ? (
+                    <Avatar type="xiaoshuai" size="md" />
+                  ) : mode === 'casual' ? (
+                    <Avatar type="xiaomei" size="md" />
+                  ) : (
+                    <RobotIcon className="w-5 h-5" />
+                  )}
+                </div>
+              )}
 
-              <div className={`flex flex-col max-w-[85%] md:max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div className={`flex flex-col ${isRequirementList ? 'w-full flex-1' : 'max-w-[85%] md:max-w-[85%]'} ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 {msg.files && msg.files.length > 0 && (
                    <div className={`flex flex-wrap gap-2 justify-end ${showBubble ? 'mb-2' : ''}`}>
                       {msg.files.map((f, idx) => (
@@ -404,16 +477,20 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                 )}
 
                 {showBubble && (
-                  <div className={`relative px-4 py-3 rounded-2xl shadow-sm leading-relaxed pb-8 min-w-[40px] min-h-[44px] w-full ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-white border border-slate-100 text-slate-700 rounded-tl-sm'}`}>
-                    <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'prose-slate'}`}>
+                  isRequirementList ? (
+                    // 需求清单表格消息 - 不使用气泡样式，直接渲染Markdown
+                    <div className="w-full">
                       <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
                               a: ({node, ...props}) => <a target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline" {...props} />,
-                              table: ({node, ...props}) => <table className="min-w-full divide-y divide-slate-200" {...props} />,
-                              thead: ({node, ...props}) => <thead className="bg-slate-50" {...props} />,
-                              th: ({node, ...props}) => <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider" {...props} />,
-                              td: ({node, ...props}) => <td className="px-4 py-2 text-sm text-slate-600" {...props} />,
+                              table: ({node, ...props}) => <table className="w-full border-collapse text-sm" style={{ backgroundColor: 'transparent' }} {...props} />,
+                              thead: ({node, ...props}) => <thead className="border-b-2 border-slate-300" style={{ backgroundColor: 'transparent' }} {...props} />,
+                              tbody: ({node, ...props}) => <tbody className="divide-y divide-slate-200" style={{ backgroundColor: 'transparent' }} {...props} />,
+                              tr: ({node, ...props}) => <tr className="hover:bg-slate-50" style={{ backgroundColor: 'transparent' }} {...props} />,
+                              th: ({node, ...props}) => <th className="px-3 py-2 text-left font-semibold text-slate-700 text-xs border-r border-slate-200 last:border-r-0" style={{ backgroundColor: 'transparent' }} {...props} />,
+                              td: ({node, ...props}) => <td className="px-3 py-2 text-slate-600 text-xs border-r border-slate-200 last:border-r-0 align-top" style={{ backgroundColor: 'transparent' }} {...props} />,
+                              p: ({node, ...props}) => <p className="mb-2" style={{ backgroundColor: 'transparent' }} {...props} />,
                               code: ({node, ...props}) => {
                                   const { className, children } = props;
                                   if (className?.includes('language-mermaid')) return <MermaidDiagram code={String(children).replace(/\n$/, '')} />;
@@ -423,21 +500,59 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                       >
                           {displayContent}
                       </ReactMarkdown>
-                    </div>
-                    
-                    {msg.isTyping && (
-                        <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-medium animate-pulse">
-                            <span className="w-1 h-1 rounded-full bg-blue-400"></span>
-                            {currentNodeName || '思考中'}
-                        </div>
-                    )}
 
-                    {!msg.isTyping && displayContent && !isSelectionMode && (
-                       <button onClick={(e) => { e.stopPropagation(); handleCopy(displayContent, msg.id); }} className={`absolute bottom-2 right-2 p-1.5 rounded-lg transition-all duration-200 z-10 ${msg.role === 'user' ? 'text-blue-200 hover:bg-blue-500 hover:text-white' : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500'} ${copiedId === msg.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                      {msg.isTyping && (
+                          <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-medium animate-pulse">
+                              <span className="w-1 h-1 rounded-full bg-blue-400"></span>
+                              {currentNodeName || '思考中'}
+                          </div>
+                      )}
+
+                      {!msg.isTyping && displayContent && !isSelectionMode && (
+                         <button onClick={(e) => { e.stopPropagation(); handleCopy(displayContent, msg.id); }} className="absolute top-2 right-2 p-1.5 rounded-lg transition-all duration-200 z-10 text-slate-300 hover:bg-slate-100 hover:text-slate-500 group-hover:opacity-100">
+                           {copiedId === msg.id ? <CheckIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
+                         </button>
+                      )}
+                    </div>
+                  ) : (
+                    // 普通消息 - 使用气泡样式
+                    <div className={`relative px-4 py-3 rounded-2xl shadow-sm leading-relaxed pb-8 min-w-[40px] min-h-[44px] w-full ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-white border border-slate-100 text-slate-700 rounded-tl-sm'}`}>
+                      <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'prose-slate'}`}>
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                a: ({node, ...props}) => <a target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline" {...props} />,
+                                table: ({node, ...props}) => <table className="w-full border-collapse text-sm" {...props} />,
+                                thead: ({node, ...props}) => <thead className="border-b-2 border-slate-300" {...props} />,
+                                tbody: ({node, ...props}) => <tbody className="divide-y divide-slate-200" {...props} />,
+                                tr: ({node, ...props}) => <tr className="hover:bg-slate-50" {...props} />,
+                                th: ({node, ...props}) => <th className="px-3 py-2 text-left font-semibold text-slate-700 text-xs border-r border-slate-200 last:border-r-0" {...props} />,
+                                td: ({node, ...props}) => <td className="px-3 py-2 text-slate-600 text-xs border-r border-slate-200 last:border-r-0 align-top" {...props} />,
+                                code: ({node, ...props}) => {
+                                    const { className, children } = props;
+                                    if (className?.includes('language-mermaid')) return <MermaidDiagram code={String(children).replace(/\n$/, '')} />;
+                                    return <code className={`${className} px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-mono text-xs`}{...props}>{children}</code>
+                                }
+                            }}
+                        >
+                            {displayContent}
+                        </ReactMarkdown>
+                      </div>
+
+                      {msg.isTyping && (
+                          <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-medium animate-pulse">
+                              <span className="w-1 h-1 rounded-full bg-blue-400"></span>
+                              {currentNodeName || '思考中'}
+                          </div>
+                      )}
+
+                      {!msg.isTyping && displayContent && !isSelectionMode && (
+                         <button onClick={(e) => { e.stopPropagation(); handleCopy(displayContent, msg.id); }} className={`absolute bottom-2 right-2 p-1.5 rounded-lg transition-all duration-200 z-10 ${msg.role === 'user' ? 'text-blue-200 hover:bg-blue-500 hover:text-white' : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500'} ${copiedId === msg.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                          {copiedId === msg.id ? <CheckIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
                        </button>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )
                 )}
                 
                 {msg.role === 'assistant' && msg.generated_files && msg.generated_files.length > 0 && (
@@ -480,9 +595,9 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                     </div>
                 )}
 
-                {/* 需求清单下载按钮 - 只在需求清单阶段显示 */}
-                {msg.role === 'assistant' && !msg.isTyping && workflowState?.currentStage === WorkflowStage.REQUIREMENT_LIST && (
-                    <div className="mt-3 w-full">
+                {/* 需求清单下载/上传按钮 - 只在需求清单阶段显示，且仅在小帅界面（standard模式） */}
+                {msg.role === 'assistant' && !msg.isTyping && workflowState?.currentStage === WorkflowStage.REQUIREMENT_LIST && mode === 'standard' && (
+                    <div className="mt-3 w-full flex flex-wrap gap-2">
                         <button
                             onClick={() => {
                               console.log('[ChatArea Requirement List] Extracting from conversation...');
@@ -500,6 +615,36 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                               <>
                                 <DownloadIcon className="w-4 h-4" />
                                 下载需求清单 Excel
+                              </>
+                            )}
+                        </button>
+
+                        {/* 上传修改后的需求清单 */}
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          className="hidden"
+                          ref={(el) => {
+                            if (!excelUploadInputRef.current) {
+                              excelUploadInputRef.current = el;
+                            }
+                          }}
+                          onChange={handleUploadModifiedExcel}
+                        />
+                        <button
+                            onClick={() => excelUploadInputRef.current?.click()}
+                            disabled={isParsingExcel || !userId}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isParsingExcel ? (
+                              <>
+                                <LoaderIcon className="w-4 h-4 animate-spin" />
+                                正在解析...
+                              </>
+                            ) : (
+                              <>
+                                <UploadIcon className="w-4 h-4" />
+                                上传修改后的清单
                               </>
                             )}
                         </button>

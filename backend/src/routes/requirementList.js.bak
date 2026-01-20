@@ -16,24 +16,6 @@ const upload = multer({
 });
 
 /**
- * 获取默认的品类模板列配置
- * 当某个品类没有配置templateConfig时使用
- */
-function getDefaultTemplateColumns() {
-  return [
-    { key: '序号', label: '序号', required: true, width: 6, type: 'number' },
-    { key: '需求编号', label: '需求编号', required: true, width: 15, type: 'text' },
-    { key: '项目名称', label: '项目名称', required: true, width: 25, type: 'text' },
-    { key: '业务背景', label: '业务背景', required: true, width: 35, type: 'textarea' },
-    { key: '优先级', label: '优先级', required: true, width: 8, type: 'select', options: ['高', '中', '低'] },
-    { key: '功能需求', label: '功能需求', required: true, width: 40, type: 'textarea' },
-    { key: '预算金额（元）', label: '预算金额（元）', required: false, width: 15, type: 'number' },
-    { key: '交付日期', label: '交付日期', required: false, width: 15, type: 'date' },
-    { key: '备注', label: '备注', required: false, width: 30, type: 'textarea' },
-  ];
-}
-
-/**
  * 生成需求清单Excel
  * POST /api/requirement-list/generate
  */
@@ -465,77 +447,65 @@ router.post('/extract-with-category', auth, async (req, res) => {
     const { messages, conversation, categoryCode } = req.body;
 
     console.log('[Requirement List Extract] Starting extraction with category identification...');
-    console.log('[Requirement List Extract] Provided categoryCode:', categoryCode);
-    console.log('[Requirement List Extract] Messages count:', messages?.length);
-    console.log('[Requirement List Extract] Conversation provided:', !!conversation);
+    console.log('[Requirement List Extract] Category code:', categoryCode);
 
     // 构建对话上下文
     const conversationContext = conversation || (
       messages ? messages.map((m) => `${m.role === 'user' ? '用户' : 'AI助手'}: ${m.content}`).join('\n\n') : ''
     );
 
-    console.log('[Requirement List Extract] Conversation context length:', conversationContext.length);
-    console.log('[Requirement List Extract] Conversation context preview:', conversationContext.substring(0, 200));
-
     if (!conversationContext) {
-      console.error('[Requirement List Extract] No conversation context provided');
       return res.status(400).json({ message: '请提供对话内容' });
     }
 
-    if (conversationContext.length < 10) {
-      console.error('[Requirement List Extract] Conversation context too short');
-      return res.status(400).json({ message: '对话内容太短，请先进行更多对话后再提取需求清单' });
-    }
+    let category = null;
 
-    // 获取所有启用的品类模板
-    const categories = await ProcurementCategory.find({ enabled: true })
-      .sort({ priority: 1 });
-
-    if (categories.length === 0) {
-      return res.status(400).json({ message: '系统暂无可用的品类模板' });
-    }
-
-    // 如果提供了预选的品类代码，直接使用
-    let selectedCategory = null;
+    // 如果指定了品类代码，使用指定的品类
     if (categoryCode) {
-      selectedCategory = categories.find(c => c.code === categoryCode);
-      if (!selectedCategory) {
-        console.warn('[Requirement List Extract] Invalid categoryCode provided:', categoryCode);
-        // 如果提供的品类代码无效，使用默认品类
-        selectedCategory = categories.find(c => c.code === 'general_procurement') || categories[0];
+      category = await ProcurementCategory.findOne({
+        code: categoryCode.toLowerCase(),
+        enabled: true,
+      });
+
+      if (!category) {
+        return res.status(404).json({ message: '指定的品类模板不存在或已禁用' });
       }
-      console.log('[Requirement List Extract] Using pre-selected category:', selectedCategory.name);
-    }
 
-    // 构建品类信息给大模型
-    const categoryInfo = categories.map(cat => ({
-      code: cat.code,
-      name: cat.name,
-      keywords: cat.keywords,
-      description: cat.description,
-    }));
+      console.log('[Requirement List Extract] Using specified category:', category.name);
+    } else {
+      // 没有指定品类，使用AI识别品类
+      const categories = await ProcurementCategory.find({ enabled: true })
+        .sort({ priority: 1 });
 
-    // 调用大模型进行需求提取和品类识别
-    const SILICONFLOW_API_BASE = process.env.SILICONFLOW_API_BASE || 'https://api.siliconflow.cn/v1';
-    const API_KEY = process.env.SILICONFLOW_API_KEY;
-    const MODEL_NAME = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen2-VL-72B-Instruct';
+      if (categories.length === 0) {
+        return res.status(400).json({ message: '系统暂无可用的品类模板' });
+      }
 
-    // 验证API Key配置
-    if (!API_KEY) {
-      console.error('[Requirement List Extract] SILICONFLOW_API_KEY not configured in environment');
-      return res.status(500).json({ message: 'AI服务未配置，请联系管理员' });
-    }
+      // 构建品类信息给大模型
+      const categoryInfo = categories.map(cat => ({
+        code: cat.code,
+        name: cat.name,
+        keywords: cat.keywords,
+        description: cat.description,
+      }));
 
-    // 使用预选品类或让AI识别品类
-    const categoryInfoText = selectedCategory
-      ? `本次采购品类为：**${selectedCategory.name}**（代码：${selectedCategory.code}）\n描述：${selectedCategory.description}\n关键词：${selectedCategory.keywords.join('、')}\n\n请根据该品类的特点提取需求信息。`
-      : `可用的采购品类：\n${categories.map(cat => `- ${cat.name}（代码：${cat.code}）：${cat.description}，关键词：${cat.keywords.join('、')}`).join('\n')}\n\n请根据对话内容自动识别最合适的品类。`;
+      // 调用大模型进行需求提取和品类识别
+      const SILICONFLOW_API_BASE = process.env.SILICONFLOW_API_BASE || 'https://api.siliconflow.cn/v1';
+      const API_KEY = process.env.SILICONFLOW_API_KEY;
+      const MODEL_NAME = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen2-VL-72B-Instruct';
+
+      // 验证API Key配置
+      if (!API_KEY) {
+        console.error('[Requirement List Extract] SILICONFLOW_API_KEY not configured in environment');
+        return res.status(500).json({ message: 'AI服务未配置，请联系管理员' });
+      }
 
     const systemPrompt = `你是一个专业的采购需求分析专家。请分析以下对话内容，提取出所有采购需求信息（包括软件开发、系统集成、技术服务、硬件采购、咨询服务等）。
 
-${selectedCategory ? `**本次采购品类已确定：${selectedCategory.name}**` : `**重要：你需要识别采购品类（procurement_category）并在返回结果中标注。**`}
+**重要：你需要识别采购品类（procurement_category）并在返回结果中标注。**
 
-${categoryInfoText}
+可用的采购品类：
+${categories.map(cat => `- ${cat.name}（代码：${cat.code}）：${cat.description}，关键词：${cat.keywords.join('、')}`).join('\n')}
 
 请严格按照以下JSON格式返回需求清单：
 {
@@ -588,15 +558,16 @@ ${categoryInfoText}
 }
 
 注意事项：
-${selectedCategory ? `1. **本次采购品类已确定为：${selectedCategory.name}（代码：${selectedCategory.code}）**，必须使用该品类，不得更改。` : `1. procurement_category字段必须包含，根据对话内容选择最合适的品类`}
+1. procurement_category字段必须包含，根据对话内容选择最合适的品类
 2. 优先级：high（高优先级/紧急）、medium（中等）、low（低优先级）
 3. 如果某些信息在对话中没有提到，可以不填或填null
 4. **所有文本字段必须是字符串，多条内容用分号；分隔，只有deliverables和requiredCertifications是数组**
 5. 只返回JSON，不要有任何其他文字说明`;
 
-    const userPrompt = selectedCategory
-      ? `请分析以下对话，提取${selectedCategory.name}品类的采购需求清单：\n**注意：所有文本字段用分号；分隔多条内容，不要使用数组格式！**\n**采购品类：${selectedCategory.name}**\n\n${conversationContext}`
-      : `请分析以下对话，提取采购需求清单并识别采购品类：\n**注意：所有文本字段用分号；分隔多条内容，不要使用数组格式！**\n\n${conversationContext}`;
+    const userPrompt = `请分析以下对话，提取采购需求清单并识别采购品类：
+**注意：所有文本字段用分号；分隔多条内容，不要使用数组格式！**
+
+${conversationContext}`;
 
     console.log('[Requirement List Extract] Calling AI model...');
     console.log('[Requirement List Extract] Conversation length:', conversationContext.length);
@@ -620,16 +591,7 @@ ${selectedCategory ? `1. **本次采购品类已确定为：${selectedCategory.n
         },
         timeout: 90000 // 90秒超时
       }
-    ).catch((axiosError) => {
-      console.error('[Requirement List Extract] AI API Request failed:', {
-        status: axiosError.response?.status,
-        statusText: axiosError.response?.statusText,
-        data: axiosError.response?.data,
-        message: axiosError.message,
-        code: axiosError.code,
-      });
-      throw new Error(`AI API请求失败: ${axiosError.response?.status} ${axiosError.response?.statusText} - ${JSON.stringify(axiosError.response?.data)}`);
-    });
+    );
 
     console.log('[Requirement List Extract] AI response received');
 
@@ -654,30 +616,39 @@ ${selectedCategory ? `1. **本次采购品类已确定为：${selectedCategory.n
     let matchMethod = 'ai';
     let matchStartTime = Date.now();
 
-    // 如果提供了预选品类，直接使用
-    if (selectedCategory) {
-      console.log('[Category Match] Using pre-selected category:', selectedCategory.name);
-      parsed.procurement_category = {
-        code: selectedCategory.code,
-        name: selectedCategory.name,
-        confidence: 'manual',
-      };
-      matchMethod = 'manual';
-    } else if (!parsed.procurement_category || !parsed.procurement_category.code) {
-      // 没有预选品类且AI也没有识别出品类，使用默认品类
-      console.log('[Category Match] No category identified, using default');
-      const defaultCategory = categories.find(c => c.code === 'general_procurement') || categories[0];
-      parsed.procurement_category = {
-        code: defaultCategory.code,
-        name: defaultCategory.name,
-        confidence: 'low',
-      };
-      matchMethod = 'fallback';
-    } else {
-      // AI识别出品类，验证是否存在
-      const matchedCategory = categories.find(c => c.code === parsed.procurement_category.code);
-      if (!matchedCategory) {
-        console.warn('[Category Match] AI returned invalid category code:', parsed.procurement_category.code);
+    if (!parsed.procurement_category || !parsed.procurement_category.code) {
+      // 如果AI没有识别出品类，使用关键词匹配算法
+      console.log('[Category Match] AI failed to identify category, using keyword matching');
+
+      try {
+        const keywordMatch = matchCategoryByKeywords(conversationContext, categories);
+
+        if (keywordMatch.score > 0 && keywordMatch.category) {
+          parsed.procurement_category = {
+            code: keywordMatch.category.code,
+            name: keywordMatch.category.name,
+            confidence: keywordMatch.confidence,
+          };
+          matchMethod = 'keyword';
+          console.log('[Category Match] Keyword match result:', {
+            category: keywordMatch.category.name,
+            score: keywordMatch.score,
+            matchedKeywords: keywordMatch.matchDetails.matchedKeywords
+          });
+        } else {
+          // 使用默认品类
+          const defaultCategory = categories.find(c => c.code === 'general_procurement') || categories[0];
+          parsed.procurement_category = {
+            code: defaultCategory.code,
+            name: defaultCategory.name,
+            confidence: 'low',
+          };
+          matchMethod = 'fallback';
+          console.log('[Category Match] Using default category:', defaultCategory.name);
+        }
+      } catch (error) {
+        console.error('[Category Match] Keyword matching failed:', error);
+        // 使用默认品类
         const defaultCategory = categories.find(c => c.code === 'general_procurement') || categories[0];
         parsed.procurement_category = {
           code: defaultCategory.code,
@@ -685,6 +656,42 @@ ${selectedCategory ? `1. **本次采购品类已确定为：${selectedCategory.n
           confidence: 'low',
         };
         matchMethod = 'fallback';
+      }
+    } else {
+      // AI识别出品类，验证是否存在
+      const matchedCategory = categories.find(c => c.code === parsed.procurement_category.code);
+      if (!matchedCategory) {
+        console.warn('[Category Match] AI returned invalid category code:', parsed.procurement_category.code);
+
+        // 尝试关键词匹配作为后备
+        try {
+          const keywordMatch = matchCategoryByKeywords(conversationContext, categories);
+          if (keywordMatch.score > 0 && keywordMatch.category) {
+            parsed.procurement_category = {
+              code: keywordMatch.category.code,
+              name: keywordMatch.category.name,
+              confidence: 'medium',
+            };
+            matchMethod = 'keyword';
+          } else {
+            const defaultCategory = categories.find(c => c.code === 'general_procurement') || categories[0];
+            parsed.procurement_category = {
+              code: defaultCategory.code,
+              name: defaultCategory.name,
+              confidence: 'low',
+            };
+            matchMethod = 'fallback';
+          }
+        } catch (error) {
+          console.error('[Category Match] Keyword matching fallback failed:', error);
+          const defaultCategory = categories.find(c => c.code === 'general_procurement') || categories[0];
+          parsed.procurement_category = {
+            code: defaultCategory.code,
+            name: defaultCategory.name,
+            confidence: 'low',
+          };
+          matchMethod = 'fallback';
+        }
       } else {
         parsed.procurement_category.name = matchedCategory.name;
       }
@@ -806,8 +813,8 @@ router.post('/generate-with-template', auth, async (req, res) => {
     console.log('[Requirement List Template] Generating with category:', categoryCode);
     console.log('[Requirement List Template] Items count:', items?.length);
 
-    if (!Array.isArray(items)) {
-      return res.status(400).json({ message: '需求清单格式错误' });
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: '需求清单不能为空' });
     }
 
     if (!categoryCode) {
@@ -824,9 +831,7 @@ router.post('/generate-with-template', auth, async (req, res) => {
       return res.status(404).json({ message: '品类模板不存在' });
     }
 
-    console.log('[Requirement List Template] Category found:', category.name);
-    console.log('[Requirement List Template] templateConfig exists:', !!category.templateConfig);
-    console.log('[Requirement List Template] columns count:', category.templateConfig?.columns?.length || 0);
+    console.log('[Requirement List Template] Using template:', category.name);
 
     // 创建工作簿
     const workbook = XLSX.utils.book_new();
@@ -840,29 +845,8 @@ router.post('/generate-with-template', auth, async (req, res) => {
     };
 
     // 根据品类模板生成主表数据
-    let templateColumns = category.templateConfig?.columns || [];
-
-    // 如果品类没有配置模板列，使用通用模板
-    if (templateColumns.length === 0) {
-      console.log('[Requirement List Template] No template config for category, using default template');
-      templateColumns = getDefaultTemplateColumns();
-    }
-
-    console.log('[Requirement List Template] Using', templateColumns.length, 'columns for', category.name);
-
-    // 如果items为空，创建一个模板行供用户填写
-    let mainData;
-    if (items.length === 0) {
-      console.log('[Requirement List Template] No items, creating template row');
-      // 创建一个空白的模板行
-      const templateRow = {};
-      templateColumns.forEach((col) => {
-        templateRow[col.label] = '';
-      });
-      mainData = [templateRow];
-    } else {
-      // 有数据时，正常处理
-      mainData = items.map((item, index) => {
+    const templateColumns = category.templateConfig?.columns || [];
+    const mainData = items.map((item, index) => {
       const row = {};
 
       // 根据模板列定义映射数据
@@ -1031,7 +1015,6 @@ router.post('/generate-with-template', auth, async (req, res) => {
 
       return row;
     });
-    }
 
     // 创建主表工作表
     const mainWorksheet = XLSX.utils.json_to_sheet(mainData);
@@ -1166,174 +1149,6 @@ function matchCategoryByKeywords(text, categories) {
     score: best.score,
     matchDetails: best.matchDetails
   };
-}
-
-/**
- * 解析用户上传的需求清单Excel文件，转换为Dify可接收的结构化格式
- * POST /api/requirement-list/parse-uploaded
- * 接收用户上传修改后的需求清单Excel，提取结构化数据返回给前端
- */
-router.post('/parse-uploaded', auth, upload.single('file'), async (req, res) => {
-  try {
-    console.log('[Parse Uploaded Excel] Starting parse...');
-
-    if (!req.file) {
-      return res.status(400).json({ message: '请上传文件' });
-    }
-
-    // 验证文件类型
-    const fileMimeType = req.file.mimetype;
-    const allowedTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel'
-    ];
-
-    if (!allowedTypes.includes(fileMimeType)) {
-      return res.status(400).json({ message: '请上传Excel文件（.xlsx或.xls格式）' });
-    }
-
-    console.log('[Parse Uploaded Excel] File received:', {
-      name: req.file.originalname,
-      size: req.file.size,
-      mimeType: fileMimeType
-    });
-
-    // 解析Excel文件
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-    console.log('[Parse Uploaded Excel] Sheets:', workbook.SheetNames);
-
-    // 读取第一个工作表
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-
-    // 转换为JSON
-    const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-    console.log('[Parse Uploaded Excel] Raw data rows:', rawData.length);
-
-    if (rawData.length < 2) {
-      return res.status(400).json({ message: 'Excel文件数据不足' });
-    }
-
-    // 第一行是表头
-    const headers = rawData[0];
-    console.log('[Parse Uploaded Excel] Headers:', headers);
-
-    // 解析数据行
-    const items = [];
-    for (let i = 1; i < rawData.length; i++) {
-      const row = rawData[i];
-      if (!row || row.length === 0) continue;
-
-      const item = {
-        序号: row[headers.indexOf('序号')] || (i),
-        需求编号: row[headers.indexOf('需求编号')] || '',
-        项目名称: row[headers.indexOf('项目名称')] || '',
-        业务背景: row[headers.indexOf('业务背景')] || '',
-        优先级: row[headers.indexOf('优先级')] || '中',
-        模块类别: row[headers.indexOf('模块类别')] || '',
-        功能需求: row[headers.indexOf('功能需求')] || '',
-        性能要求: row[headers.indexOf('性能要求')] || '',
-        安全要求: row[headers.indexOf('安全要求')] || '',
-        兼容性要求: row[headers.indexOf('兼容性要求')] || '',
-        技术栈: row[headers.indexOf('技术栈')] || '',
-        部署方式: row[headers.indexOf('部署方式')] || '',
-        集成要求: row[headers.indexOf('集成要求')] || '',
-        代码标准: row[headers.indexOf('代码标准')] || '',
-        交付物: row[headers.indexOf('交付物')] || '',
-        预估工作量: row[headers.indexOf('预估工作量')] || '',
-      };
-
-      // 只添加有项目名称的行
-      if (item['项目名称']) {
-        items.push(item);
-      }
-    }
-
-    console.log('[Parse Uploaded Excel] Parsed items:', items.length);
-
-    // 生成结构化JSON文本，用于发送给Dify
-    const structuredText = generateRequirementSummary(items);
-
-    // 返回解析结果
-    res.json({
-      success: true,
-      data: {
-        itemCount: items.length,
-        items: items,
-        structuredText: structuredText,
-        fileName: req.file.originalname
-      }
-    });
-
-    console.log('[Parse Uploaded Excel] Parse completed successfully');
-
-  } catch (error) {
-    console.error('[Parse Uploaded Excel] Error:', error);
-    res.status(500).json({
-      message: '解析Excel文件失败',
-      error: error.message
-    });
-  }
-});
-
-/**
- * 将解析的需求清单生成为结构化文本，便于Dify理解
- */
-function generateRequirementSummary(items) {
-  if (!items || items.length === 0) {
-    return '未找到需求数据';
-  }
-
-  let summary = '# 📋 更新后的需求清单\n\n';
-  summary += `用户已上传修改后的需求清单，共 **${items.length}** 项需求。\n\n`;
-  summary += '## 需求详情\n\n';
-
-  items.forEach((item, index) => {
-    summary += `### ${index + 1}. ${item['项目名称']}\n\n`;
-    summary += `- **需求编号**: ${item['需求编号'] || 'N/A'}\n`;
-    summary += `- **业务背景**: ${item['业务背景'] || '无'}\n`;
-    summary += `- **优先级**: ${item['优先级'] || '中'}\n`;
-    summary += `- **模块类别**: ${item['模块类别'] || '未分类'}\n\n`;
-
-    summary += '**功能需求**:\n';
-    summary += `${item['功能需求'] || '无具体描述'}\n\n`;
-
-    // 非功能性需求
-    const hasNonFunctional = item['性能要求'] || item['安全要求'] || item['兼容性要求'];
-    if (hasNonFunctional) {
-      summary += '**非功能性需求**:\n';
-      if (item['性能要求']) summary += `- 性能: ${item['性能要求']}\n`;
-      if (item['安全要求']) summary += `- 安全: ${item['安全要求']}\n`;
-      if (item['兼容性要求']) summary += `- 兼容性: ${item['兼容性要求']}\n`;
-      summary += '\n';
-    }
-
-    // 技术规格
-    const hasTechSpecs = item['技术栈'] || item['部署方式'] || item['集成要求'] || item['代码标准'];
-    if (hasTechSpecs) {
-      summary += '**技术规格**:\n';
-      if (item['技术栈']) summary += `- 技术栈: ${item['技术栈']}\n`;
-      if (item['部署方式']) summary += `- 部署方式: ${item['部署方式']}\n`;
-      if (item['集成要求']) summary += `- 集成要求: ${item['集成要求']}\n`;
-      if (item['代码标准']) summary += `- 代码标准: ${item['代码标准']}\n`;
-      summary += '\n';
-    }
-
-    // 交付物
-    if (item['交付物']) {
-      summary += '**交付物**:\n';
-      summary += `${item['交付物']}\n\n`;
-    }
-
-    // 工作量
-    if (item['预估工作量']) {
-      summary += `**预估工作量**: ${item['预估工作量']}\n\n`;
-    }
-
-    summary += '---\n\n';
-  });
-
-  return summary;
 }
 
 export default router;

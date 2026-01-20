@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   PlusIcon, EditIcon, TrashIcon, CheckIcon, CloseIcon,
-  UploadIcon, DownloadIcon, SearchIcon
+  UploadIcon, DownloadIcon, SearchIcon, FileTextIcon
 } from './Icons';
 
 interface ProcurementCategory {
@@ -38,7 +38,9 @@ const CategoryTemplates: React.FC<CategoryTemplatesProps> = ({ API_BASE_URL }) =
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showFieldsModal, setShowFieldsModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ProcurementCategory | null>(null);
+  const [viewingCategoryFields, setViewingCategoryFields] = useState<ProcurementCategory | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -83,23 +85,39 @@ const CategoryTemplates: React.FC<CategoryTemplatesProps> = ({ API_BASE_URL }) =
 
   // 初始化默认模板
   const initDefaultTemplates = async () => {
-    if (!confirm('确定要初始化默认品类模板吗？这将创建软件开发、硬件采购、咨询服务等基础模板。')) {
-      return;
-    }
-
     try {
       const response = await fetch(`${API_BASE_URL}/procurement-categories/init-defaults`, {
         method: 'POST',
         headers: getAuthHeaders(),
+        body: JSON.stringify({ force: false }), // 不强制覆盖，只添加缺失的
       });
 
       if (!response.ok) {
-        throw new Error('初始化默认模板失败');
+        const error = await response.json();
+        if (error.message?.includes('已存在')) {
+          // 如果已存在，询问是否强制重新初始化
+          if (confirm('系统已存在品类模板，是否要强制重新初始化？这将删除所有现有模板并创建默认模板。')) {
+            const forceResponse = await fetch(`${API_BASE_URL}/procurement-categories/init-defaults`, {
+              method: 'POST',
+              headers: getAuthHeaders(),
+              body: JSON.stringify({ force: true }),
+            });
+            if (forceResponse.ok) {
+              const result = await forceResponse.json();
+              alert(result.message || '默认模板已重新初始化');
+              loadCategories();
+            } else {
+              throw new Error('强制重新初始化失败');
+            }
+          }
+        } else {
+          throw new Error(error.message || '初始化默认模板失败');
+        }
+      } else {
+        const result = await response.json();
+        alert(result.message || '默认模板初始化成功');
+        loadCategories();
       }
-
-      const result = await response.json();
-      alert(result.message || '默认模板初始化成功');
-      loadCategories();
     } catch (err) {
       console.error('Init defaults error:', err);
       alert('初始化默认模板失败: ' + (err as Error).message);
@@ -144,6 +162,18 @@ const CategoryTemplates: React.FC<CategoryTemplatesProps> = ({ API_BASE_URL }) =
       priority: 0,
       enabled: true,
     });
+  };
+
+  // 打开字段查看器
+  const openFieldsModal = (category: ProcurementCategory) => {
+    setViewingCategoryFields(category);
+    setShowFieldsModal(true);
+  };
+
+  // 关闭字段查看器
+  const closeFieldsModal = () => {
+    setShowFieldsModal(false);
+    setViewingCategoryFields(null);
   };
 
   // 保存品类模板
@@ -249,14 +279,19 @@ const CategoryTemplates: React.FC<CategoryTemplatesProps> = ({ API_BASE_URL }) =
               className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
             />
           </div>
-          {categories.length === 0 && (
+          <div className="relative">
             <button
-              onClick={initDefaultTemplates}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-sm font-medium"
+              onClick={() => {
+                if (confirm('确定要重新初始化默认品类模板吗？这将添加缺失的默认模板。')) {
+                  initDefaultTemplates();
+                }
+              }}
             >
-              初始化默认模板
+              <UploadIcon className="w-4 h-4" />
+              更多操作
             </button>
-          )}
+          </div>
         </div>
         <button
           onClick={() => openModal()}
@@ -354,6 +389,13 @@ const CategoryTemplates: React.FC<CategoryTemplatesProps> = ({ API_BASE_URL }) =
                   字段数: {category.templateConfig?.columns?.length || 0}
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openFieldsModal(category)}
+                    className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                    title="查看字段"
+                  >
+                    <FileTextIcon className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => openModal(category)}
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -483,6 +525,116 @@ const CategoryTemplates: React.FC<CategoryTemplatesProps> = ({ API_BASE_URL }) =
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingCategory ? '保存' : '创建'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 字段查看模态框 */}
+      {showFieldsModal && viewingCategoryFields && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">{viewingCategoryFields.name} - 模板字段</h3>
+                <p className="text-sm text-slate-500 mt-1">代码: {viewingCategoryFields.code}</p>
+              </div>
+              <button
+                onClick={closeFieldsModal}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <CloseIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6">
+              <div className="mb-6">
+                <h4 className="font-bold text-slate-700 mb-3">字段列表 ({viewingCategoryFields.templateConfig?.columns?.length || 0})</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-medium text-slate-600">字段名称</th>
+                        <th className="px-4 py-2 text-left font-medium text-slate-600">字段键</th>
+                        <th className="px-4 py-2 text-left font-medium text-slate-600">类型</th>
+                        <th className="px-4 py-2 text-left font-medium text-slate-600">必填</th>
+                        <th className="px-4 py-2 text-left font-medium text-slate-600">列宽</th>
+                        <th className="px-4 py-2 text-left font-medium text-slate-600">选项/示例</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {viewingCategoryFields.templateConfig?.columns?.map((column, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium text-slate-700">{column.label}</td>
+                          <td className="px-4 py-3 text-slate-500 font-mono text-xs">{column.key}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              column.type === 'text' ? 'bg-blue-100 text-blue-600' :
+                              column.type === 'number' ? 'bg-green-100 text-green-600' :
+                              column.type === 'date' ? 'bg-purple-100 text-purple-600' :
+                              column.type === 'select' ? 'bg-orange-100 text-orange-600' :
+                              column.type === 'textarea' ? 'bg-pink-100 text-pink-600' :
+                              'bg-slate-100 text-slate-600'
+                            }`}>
+                              {column.type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {column.required ? (
+                              <span className="text-red-500">✓</span>
+                            ) : (
+                              <span className="text-slate-300">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-slate-500">{column.width}</td>
+                          <td className="px-4 py-3 text-slate-500 max-w-xs truncate">
+                            {column.options?.join(', ') || column.example || column.instruction || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                      {(!viewingCategoryFields.templateConfig?.columns || viewingCategoryFields.templateConfig.columns.length === 0) && (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                            暂无字段配置
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {viewingCategoryFields.templateConfig?.sheets && (
+                <div>
+                  <h4 className="font-bold text-slate-700 mb-3">工作表配置</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {viewingCategoryFields.templateConfig.sheets.map((sheet, idx) => (
+                      <span
+                        key={idx}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                          sheet.type === 'main' ? 'bg-blue-100 text-blue-700' :
+                          sheet.type === 'summary' ? 'bg-purple-100 text-purple-700' :
+                          'bg-slate-100 text-slate-600'
+                        } ${sheet.enabled ? 'opacity-100' : 'opacity-50'}`}
+                      >
+                        {sheet.name} ({sheet.type})
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              <p className="text-sm text-slate-500">
+                提示: 要编辑字段，请使用API直接更新或编辑数据库记录
+              </p>
+              <button
+                onClick={closeFieldsModal}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                关闭
               </button>
             </div>
           </div>

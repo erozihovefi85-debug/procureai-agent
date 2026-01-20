@@ -1,6 +1,7 @@
 import express from 'express';
 import { generateToken } from '../utils/jwt.js';
 import User from '../models/User.js';
+import { auth } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -99,7 +100,7 @@ router.post('/login', async (req, res) => {
 });
 
 // Get current user (protected)
-router.get('/me', async (req, res) => {
+router.get('/me', auth, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
     if (!user) {

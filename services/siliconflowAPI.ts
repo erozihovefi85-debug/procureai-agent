@@ -478,20 +478,221 @@ export async function generateRequirementListExcelWithTemplate(
   const token = localStorage.getItem('procureai_token');
 
   console.log('[generateRequirementListExcelWithTemplate] Generating with category:', categoryCode);
+  console.log('[generateRequirementListExcelWithTemplate] Data:', {
+    itemCount: requirementListData.items.length,
+    hasProjectSummary: !!requirementListData.projectSummary
+  });
 
-  const response = await axios.post(
-    `${API_BASE_URL}/requirement-list/generate-with-template`,
-    { ...requirementListData, categoryCode },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+  try {
+    const response = await axios.post(
+      `${API_BASE_URL}/requirement-list/generate-with-template`,
+      { ...requirementListData, categoryCode },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        responseType: 'blob',
+        timeout: 60000,
+      }
+    );
+
+    console.log('[generateRequirementListExcelWithTemplate] Excel generated successfully');
+
+    return response.data;
+  } catch (error) {
+    console.error('[generateRequirementListExcelWithTemplate] Error:', error);
+    throw error; // 重新抛出错误，让调用者处理
+  }
+}
+
+/**
+ * 根据预选品类模板从对话中提取需求清单（简化版）
+ */
+export async function extractRequirementListWithSelectedCategory(
+  messages: Array<{ role: string; content: string }>,
+  categoryCode: string
+): Promise<{
+  items: Array<{
+    requirementId: string;
+    projectName: string;
+    businessBackground: string;
+    priority: 'high' | 'medium' | 'low';
+    moduleCategory: string;
+    functionalRequirements: string;
+    nonFunctionalRequirements: {
+      performance: string;
+      security: string;
+      compatibility: string;
+    };
+    technicalSpecs: {
+      techStack: string;
+      deploymentMode: string;
+      integrationRequirements: string;
+      codeStandards: string;
+    };
+    deliverables: string[];
+    estimatedWorkload?: number;
+    workloadUnit?: string;
+    budgetAmount?: number;
+    vendorQualifications?: {
+      minExperience?: string;
+      requiredCertifications?: string[];
+      teamSize?: number;
+    };
+    deliveryDate?: string;
+    paymentTerms?: string;
+    warrantyPeriod?: string;
+    intellectualProperty?: string;
+    additionalNotes?: string;
+  }>;
+  projectSummary: {
+    totalBudget?: number;
+    overallDeadline?: string;
+    evaluationCriteria?: string;
+    confidentialityRequired?: boolean;
+  };
+  category: {
+    code: string;
+    name: string;
+  };
+} | null> {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  const token = localStorage.getItem('procureai_token');
+
+  try {
+    console.log('[extractRequirementListWithSelectedCategory] Using category:', categoryCode);
+
+    const response = await axios.post(
+      `${API_BASE_URL}/requirement-list/extract-with-category`,
+      {
+        messages,
+        categoryCode
       },
-      responseType: 'blob',
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 120000,
+        // 确保axios不会抛出4xx/5xx错误，让我们自己处理
+        validateStatus: function (status) {
+          return status < 500; // 只有5xx才抛出异常
+        }
+      }
+    );
+
+    console.log('[extractRequirementListWithSelectedCategory] Response received:', {
+      status: response.status,
+      data: response.data
+    });
+
+    if (!response.data.success || response.status >= 400) {
+      console.error('[extractRequirementListWithSelectedCategory] API returned error:', response.data.message);
+      // 当提取失败时，返回空的需求清单模板
+      return {
+        items: [],
+        projectSummary: {
+          evaluationCriteria: '未从对话中提取到需求清单，请手动填写'
+        },
+        category: {
+          code: categoryCode,
+          name: '需求清单'
+        }
+      };
     }
-  );
 
-  console.log('[generateRequirementListExcelWithTemplate] Excel generated successfully');
+    return response.data.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.error('[extractRequirementListWithSelectedCategory] Request failed:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message,
+        code: error.code,
+      });
+      console.log('[extractRequirementListWithSelectedCategory] Returning empty template due to error');
+      // 当请求失败时（如400错误），返回空的需求清单模板
+      return {
+        items: [],
+        projectSummary: {
+          evaluationCriteria: '未从对话中提取到需求清单，请手动填写'
+        },
+        category: {
+          code: categoryCode,
+          name: '需求清单'
+        }
+      };
+    } else {
+      console.error('[extractRequirementListWithSelectedCategory] Non-Axios error:', error);
+      console.log('[extractRequirementListWithSelectedCategory] Returning empty template due to non-axios error');
+      // 其他错误也返回空模板
+      return {
+        items: [],
+        projectSummary: {
+          evaluationCriteria: '提取需求清单时出错，请手动填写'
+        },
+        category: {
+          code: categoryCode,
+          name: '需求清单'
+        }
+      };
+    }
+  }
+}
 
-  return response.data;
+/**
+ * 解析用户上传的需求清单Excel文件
+ * @param file Excel文件
+ * @returns 解析后的结构化数据
+ */
+export async function parseUploadedRequirementExcel(file: File): Promise<{
+  success: boolean;
+  data: {
+    itemCount: number;
+    items: any[];
+    structuredText: string;
+    fileName: string;
+  };
+} | null> {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  const token = localStorage.getItem('procureai_token');
+
+  try {
+    console.log('[parseUploadedRequirementExcel] Parsing file:', file.name);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await axios.post(
+      `${API_BASE_URL}/requirement-list/parse-uploaded`,
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000,
+      }
+    );
+
+    console.log('[parseUploadedRequirementExcel] Response:', response.data);
+
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.error('[parseUploadedRequirementExcel] Request failed:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message,
+        code: error.code,
+      });
+      throw new Error(`文件解析失败: ${error.response?.status} ${error.response?.statusText} - ${JSON.stringify(error.response?.data)}`);
+    } else {
+      console.error('[parseUploadedRequirementExcel] Error:', error);
+      throw error;
+    }
+  }
 }

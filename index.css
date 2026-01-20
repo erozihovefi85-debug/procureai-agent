@@ -51,6 +51,29 @@ body {
   background: #94a3b8;
 }
 
+/* 自定义滚动条样式 - 用于品类列表 */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 /* Specific "Drag Bar" style for tables */
 .custom-table-scrollbar::-webkit-scrollbar {
   height: 8px; /* Thicker for horizontal scroll */
