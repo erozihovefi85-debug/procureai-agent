@@ -8,6 +8,8 @@ import UserCenter from './components/UserCenter';
 import AdminDashboard from './components/AdminDashboard';
 import SupplierFavorites from './components/SupplierFavorites';
 import ProductWishlist from './components/ProductWishlist';
+import SkillStore from './components/SkillStore';
+import SkillStudio from './components/SkillStudio';
 import ErrorBoundary from './components/ErrorBoundary';
 import ToastNotifications, { ToastNotification } from './components/ToastNotifications';
 import { MenuIcon, ChevronLeftIcon, SearchIcon, HomeIcon, ShareIcon } from './components/Icons';
@@ -18,9 +20,11 @@ import {
   LoadingState,
   UploadedFile,
   AppMode,
-  User
+  User,
+  Skill,
+  SkillSelectedInfo,
 } from './types';
-import { chatAPI, conversationAPI } from './services/api';
+import { chatAPI, agentAPI, conversationAPI } from './services/api';
 import { CURRENT_USER_ID } from './config';
 import { useWorkflow } from './hooks/useWorkflow';
 
@@ -107,6 +111,11 @@ const App: React.FC = () => {
   const [standardTab, setStandardTab] = useState<string>('keyword');
   const [previousMode, setPreviousMode] = useState<AppMode>('home');
   const [previousStandardTab, setPreviousStandardTab] = useState<string>('keyword');
+
+  // --- Skill State ---
+  const [activeSkill, setActiveSkill] = useState<Skill | null>(null);
+  const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
+  const [currentSkillInfo, setCurrentSkillInfo] = useState<SkillSelectedInfo | null>(null);
 
   // --- Workflow State ---
   const {
@@ -209,11 +218,17 @@ const App: React.FC = () => {
 
   const handleContextSwitch = (newMode: AppMode, newTab?: string, categoryCode?: string) => {
       // Store previous mode before switching (for supplier favorites and wishlist return)
-      if (newMode === 'user-center' || newMode === 'suppliers' || newMode === 'wishlist') {
+      if (newMode === 'user-center' || newMode === 'suppliers' || newMode === 'wishlist' || newMode === 'skills' || newMode === 'skill-studio') {
         setPreviousMode(appMode);
         if (appMode === 'standard') {
           setPreviousStandardTab(standardTab);
         }
+      }
+
+      // Skill modes require login
+      if ((newMode === 'skills' || newMode === 'skill-studio') && !user) {
+        setShowLoginModal(true);
+        return;
       }
 
       // Permission check: standard procurement requires login
@@ -408,67 +423,77 @@ const App: React.FC = () => {
     abortControllerRef.current = controller;
     let targetConvId = currentConversationId;
 
-    // Use backend API - files will be uploaded by backend
-    await chatAPI.stream(
-      {
-        query: text,
-        conversationId: targetConvId,
-        contextId: currentContextId,
-        files: files // Pass raw File objects directly
-      },
-      (chunk) => {
-        handleUpdateMessages(prev => prev.map(msg =>
-          msg.id === assistantMsgId
-            ? { ...msg, content: msg.content + chunk }
-            : msg
-        ));
-      },
-      (newConversationId, generatedFiles) => {
-        setConversationLoadingStates(prev => ({ ...prev, [key]: LoadingState.IDLE }));
-        setCurrentNodeNames(prev => ({ ...prev, [key]: null }));
+    // Use Agent API for skill-aware routing, fallback to legacy chat API
+    const useAgentAPI = activeSkill || !currentContextId.startsWith('casual') || !currentContextId.startsWith('standard');
 
-        handleUpdateMessages(prev => prev.map(msg =>
-            msg.id === assistantMsgId ? { ...msg, isTyping: false, generated_files: generatedFiles } : msg
-        ));
+    const chatPayload = {
+      query: text,
+      conversationId: targetConvId,
+      contextId: currentContextId,
+      skillSlug: activeSkill?.slug || undefined,
+      files: files,
+    };
 
-        // 确定最终的 conversationId
-        const finalConversationId = newConversationId || targetConvId;
+    const handleChunk = (chunk: string) => {
+      handleUpdateMessages(prev => prev.map(msg =>
+        msg.id === assistantMsgId
+          ? { ...msg, content: msg.content + chunk }
+          : msg
+      ));
+    };
 
-        // 如果是新创建的对话（之前没有 conversationId），需要：
-        // 1. 将消息从 contextId 键迁移到 conversationId 键
-        // 2. 设置当前对话ID
-        if (!targetConvId && finalConversationId) {
-          // 将当前上下文的消息复制到新的对话ID下
-          setMessagesMap(prev => {
-            const contextMessages = prev[currentContextId] || [];
-            return {
-              ...prev,
-              [finalConversationId]: contextMessages,
-              // 保留 contextId 的消息作为备份，避免瞬间闪烁
-              [currentContextId]: contextMessages
-            };
-          });
-          setCurrentConversationId(finalConversationId);
-        }
+    const handleEnd = (newConversationId: string, generatedFiles: any) => {
+      setConversationLoadingStates(prev => ({ ...prev, [key]: LoadingState.IDLE }));
+      setCurrentNodeNames(prev => ({ ...prev, [key]: null }));
+      setCurrentSkillInfo(null);
 
-        // 不自动切换到新对话，让用户自己选择查看
-        // 只是在后台加载对话列表
-        loadConversations();
-      },
-      (error) => {
-        setConversationLoadingStates(prev => ({ ...prev, [key]: LoadingState.ERROR }));
-        setCurrentNodeNames(prev => ({ ...prev, [key]: null }));
+      handleUpdateMessages(prev => prev.map(msg =>
+          msg.id === assistantMsgId ? { ...msg, isTyping: false, generated_files: generatedFiles } : msg
+      ));
 
-        handleUpdateMessages(prev => prev.map(msg =>
-          msg.id === assistantMsgId
-            ? { ...msg, isTyping: false, content: msg.content + `\n[Error: ${error}]` }
-            : msg
-        ));
-      },
-      (nodeName) => {
-        setCurrentNodeNames(prev => ({ ...prev, [key]: nodeName }));
+      const finalConversationId = newConversationId || targetConvId;
+
+      if (!targetConvId && finalConversationId) {
+        setMessagesMap(prev => {
+          const contextMessages = prev[currentContextId] || [];
+          return {
+            ...prev,
+            [finalConversationId]: contextMessages,
+            [currentContextId]: contextMessages
+          };
+        });
+        setCurrentConversationId(finalConversationId);
       }
-    );
+
+      loadConversations();
+    };
+
+    const handleError = (error: string) => {
+      setConversationLoadingStates(prev => ({ ...prev, [key]: LoadingState.ERROR }));
+      setCurrentNodeNames(prev => ({ ...prev, [key]: null }));
+      setCurrentSkillInfo(null);
+
+      handleUpdateMessages(prev => prev.map(msg =>
+        msg.id === assistantMsgId
+          ? { ...msg, isTyping: false, content: msg.content + `\n[Error: ${error}]` }
+          : msg
+      ));
+    };
+
+    const handleNodeChange = (nodeName: string) => {
+      setCurrentNodeNames(prev => ({ ...prev, [key]: nodeName }));
+    };
+
+    // Use Agent API (new architecture) which handles both skill routing and legacy contexts
+    await agentAPI.chat(chatPayload, {
+      onChunk: handleChunk,
+      onEnd: handleEnd,
+      onError: handleError,
+      onNodeChange: handleNodeChange,
+      onSkillSelected: (info: SkillSelectedInfo) => {
+        setCurrentSkillInfo(info);
+      },
+    });
 
     abortControllerRef.current = null;
   };
@@ -711,6 +736,47 @@ const App: React.FC = () => {
       );
   }
 
+  // Skill Store Mode
+  if (appMode === 'skills') {
+    return (
+      <ErrorBoundary>
+        <SkillStore
+          user={user}
+          onSelectSkill={(skill) => {
+            setActiveSkill(skill);
+            // Switch to casual mode to use the skill in chat
+            setCurrentConversationId('');
+            setAppMode('casual');
+          }}
+          onCreateSkill={() => {
+            setEditingSkill(null);
+            setAppMode('skill-studio');
+          }}
+          onBack={() => setAppMode('home')}
+        />
+        {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} onLogin={handleLogin} />}
+      </ErrorBoundary>
+    );
+  }
+
+  // Skill Studio Mode (create/edit custom skills)
+  if (appMode === 'skill-studio') {
+    return (
+      <ErrorBoundary>
+        <SkillStudio
+          user={user}
+          editSkill={editingSkill}
+          onBack={() => setAppMode('skills')}
+          onSaved={(skill) => {
+            setEditingSkill(null);
+            setAppMode('skills');
+          }}
+        />
+        {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} onLogin={handleLogin} />}
+      </ErrorBoundary>
+    );
+  }
+
   // Home Mode
   if (appMode === 'home') {
     return (
@@ -719,6 +785,7 @@ const App: React.FC = () => {
           onSelectMode={(mode, categoryCode) => handleContextSwitch(mode, undefined, categoryCode)}
           onLoginRequest={() => setShowLoginModal(true)}
           onGoToUserCenter={() => setAppMode('user-center')}
+          onGoToSkills={() => handleContextSwitch('skills')}
           user={user}
         />
         {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} onLogin={handleLogin} />}
@@ -737,7 +804,7 @@ const App: React.FC = () => {
     );
   }
 
-  const sidebarTitle = appMode === 'standard' ? '企业寻源数字监理' : '私家买手助理';
+  const sidebarTitle = appMode === 'standard' ? '企业寻源数字监理' : activeSkill ? `Skill: ${activeSkill.name}` : '私家买手助理';
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
@@ -757,6 +824,7 @@ const App: React.FC = () => {
         onAdminClick={() => handleContextSwitch('admin')}
         onSupplierFavorites={appMode === 'standard' ? () => handleContextSwitch('suppliers') : undefined}
         onProductWishlist={appMode === 'casual' ? () => handleContextSwitch('wishlist') : undefined}
+        onSkillStore={() => handleContextSwitch('skills')}
         isAdmin={user?.role === 'ADMIN'}
       />
 
@@ -798,14 +866,30 @@ const App: React.FC = () => {
                             <MenuIcon />
                         </button>
                         <span className="font-bold text-slate-700">{sidebarTitle}</span>
+                        {activeSkill && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium">
+                            {activeSkill.name}
+                          </span>
+                        )}
                     </div>
-                    <button
-                      onClick={() => setAppMode('home')}
-                      className="p-2 -mr-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"
-                      title="返回首页"
-                    >
-                      <HomeIcon />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {activeSkill && (
+                        <button
+                          onClick={() => setActiveSkill(null)}
+                          className="p-2 text-xs text-indigo-500 hover:bg-indigo-50 rounded-full transition-colors"
+                          title="取消技能"
+                        >
+                          &#x2715;
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setAppMode('home')}
+                        className="p-2 -mr-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"
+                        title="返回首页"
+                      >
+                        <HomeIcon />
+                      </button>
+                    </div>
                 </header>
 
                 <main className="flex-1 relative flex flex-col min-h-0 overflow-hidden w-full">

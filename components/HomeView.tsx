@@ -7,6 +7,7 @@ interface HomeViewProps {
   onSelectMode: (mode: 'casual' | 'standard', categoryCode?: string) => void;
   onLoginRequest: () => void;
   onGoToUserCenter?: () => void;
+  onGoToSkills?: () => void;
   user: User | null;
 }
 
@@ -332,7 +333,7 @@ const PricingCard: React.FC<{
     );
 };
 
-const HomeView: React.FC<HomeViewProps> = ({ onSelectMode, onLoginRequest, onGoToUserCenter, user }) => {
+const HomeView: React.FC<HomeViewProps> = ({ onSelectMode, onLoginRequest, onGoToUserCenter, onGoToSkills, user }) => {
   const [selectedMode, setSelectedMode] = useState<'casual' | 'standard' | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<ProcurementCategory[]>([]);
@@ -552,6 +553,17 @@ const HomeView: React.FC<HomeViewProps> = ({ onSelectMode, onLoginRequest, onGoT
                     </svg>
                   </div>
                   <span className="font-semibold text-lg">采购专家小帅</span>
+                </button>
+
+                {/* Skills Button */}
+                <button
+                  onClick={onGoToSkills}
+                  className="w-full p-4 rounded-xl transition-all duration-300 border shadow-sm flex items-center justify-center gap-3 backdrop-blur-sm bg-white/80 text-slate-700 hover:bg-white hover:text-indigo-600 border-slate-200 hover:shadow-md"
+                >
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-sm">
+                    &#x26A1;
+                  </div>
+                  <span className="font-semibold text-lg">Skill 技能中心</span>
                 </button>
               </div>
 

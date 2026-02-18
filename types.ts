@@ -94,7 +94,74 @@ export enum LoadingState {
 }
 
 // App Navigation Types
-export type AppMode = 'home' | 'casual' | 'standard' | 'user-center' | 'admin' | 'suppliers' | 'wishlist';
+export type AppMode = 'home' | 'casual' | 'standard' | 'user-center' | 'admin' | 'suppliers' | 'wishlist' | 'skills' | 'skill-studio';
+
+// ==================== Skill Types ====================
+
+export type SkillType = 'builtin' | 'custom' | 'api';
+export type SkillCategory = 'procurement' | 'analysis' | 'document' | 'supplier' | 'general' | 'custom';
+export type SkillVisibility = 'public' | 'private' | 'shared';
+export type SkillOutputFormat = 'text' | 'markdown' | 'json' | 'table' | 'file';
+
+export interface SkillParameter {
+  name: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'select' | 'file' | 'text';
+  required: boolean;
+  defaultValue?: any;
+  placeholder?: string;
+  description?: string;
+  options?: { label: string; value: string }[];
+}
+
+export interface SkillConfig {
+  // Dify builtin
+  difyContextId?: string;
+  difyApiKey?: string;
+  // Custom LLM
+  systemPrompt?: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  // API type
+  apiEndpoint?: string;
+  apiMethod?: 'GET' | 'POST' | 'PUT';
+  apiHeaders?: Record<string, string>;
+  apiBodyTemplate?: string;
+  responseMapping?: string;
+}
+
+export interface Skill {
+  _id: string;
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: string;
+  category: SkillCategory;
+  type: SkillType;
+  config: SkillConfig;
+  parameters: SkillParameter[];
+  outputFormat: SkillOutputFormat;
+  owner?: string;
+  visibility: SkillVisibility;
+  allowedRoles: string[];
+  enabled: boolean;
+  featured: boolean;
+  usageCount: number;
+  lastUsedAt?: string;
+  version: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SkillSelectedInfo {
+  slug: string;
+  name: string;
+  mode: 'direct' | 'context' | 'agent';
+  confidence?: number;
+  reasoning?: string;
+}
 
 export interface ScenarioConfig {
     id: string;
