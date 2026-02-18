@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import connectDB from './config/database.js';
+import { initBuiltinSkills } from './services/skillRegistry.js';
 
 // Load environment variables
 dotenv.config();
@@ -18,8 +19,15 @@ const PORT = process.env.PORT || 3001;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Connect to database
-connectDB();
+// Connect to database and initialize skills
+connectDB().then(async () => {
+  try {
+    await initBuiltinSkills();
+    console.log('[Init] Builtin skills initialized');
+  } catch (error) {
+    console.error('[Init] Failed to initialize builtin skills:', error.message);
+  }
+});
 
 // Middleware
 app.use(helmet());
@@ -45,6 +53,8 @@ import supplierRoutes from './routes/suppliers.js';
 import productRoutes from './routes/products.js';
 import requirementListRoutes from './routes/requirementList.js';
 import procurementCategoriesRoutes from './routes/procurementCategories.js';
+import skillRoutes from './routes/skills.js';
+import agentChatRoutes from './routes/agentChat.js';
 
 app.use('/api', apiRoutes);
 app.use('/api/auth', authRoutes);
@@ -56,6 +66,8 @@ app.use('/api/suppliers', supplierRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/requirement-list', requirementListRoutes);
 app.use('/api/procurement-categories', procurementCategoriesRoutes);
+app.use('/api/skills', skillRoutes);
+app.use('/api/agent', agentChatRoutes);
 
 // Serve frontend in production
 if (process.env.NODE_ENV === 'production') {

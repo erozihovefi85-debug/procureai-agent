@@ -207,7 +207,7 @@ export const requirementListAPI = {
   },
 };
 
-// Chat Streaming API
+// Chat Streaming API (legacy - kept for backward compatibility)
 export const chatAPI = {
   stream: (data, onChunk, onEnd, onError, onNodeChange) => {
     const token = localStorage.getItem('procureai_token');
@@ -260,6 +260,168 @@ export const chatAPI = {
                 onError(data.error);
               } else if (data.type === 'node') {
                 onNodeChange(data.nodeName);
+              }
+            } catch (e) {
+              console.warn("Failed to parse SSE data", e);
+            }
+          }
+        }
+      }
+    });
+  },
+};
+
+// ==================== Skill APIs ====================
+export const skillAPI = {
+  // 获取可用技能列表
+  getAll: (params) => api.get('/skills', { params }),
+  // 获取推荐技能
+  getFeatured: () => api.get('/skills/featured'),
+  // 获取技能详情
+  getBySlug: (slug) => api.get(`/skills/${slug}`),
+  // 创建自定义技能
+  create: (data) => api.post('/skills', data),
+  // 更新技能
+  update: (slug, data) => api.put(`/skills/${slug}`, data),
+  // 删除技能
+  delete: (slug) => api.delete(`/skills/${slug}`),
+  // 获取执行历史
+  getExecutions: (slug, params) => api.get(`/skills/${slug}/executions`, { params }),
+  // 获取使用统计
+  getStats: () => api.get('/skills/stats/overview'),
+};
+
+// ==================== Agent Chat API ====================
+/**
+ * Agent智能聊天API
+ * 支持Agent自动路由和直接Skill调用两种模式
+ */
+export const agentAPI = {
+  /**
+   * Agent聊天（流式）
+   * @param {Object} data - { query, conversationId, contextId, skillSlug, skillParams, files }
+   * @param {Object} callbacks - { onChunk, onEnd, onError, onNodeChange, onSkillSelected }
+   */
+  chat: (data, callbacks) => {
+    const { onChunk, onEnd, onError, onNodeChange, onSkillSelected } = callbacks;
+    const token = localStorage.getItem('procureai_token');
+    const formData = new FormData();
+
+    // Append non-file fields
+    const fields = ['query', 'conversationId', 'contextId', 'skillSlug', 'skillParams'];
+    fields.forEach(key => {
+      if (data[key] !== undefined && data[key] !== null) {
+        formData.append(key, typeof data[key] === 'object' ? JSON.stringify(data[key]) : data[key]);
+      }
+    });
+
+    // Append files
+    if (data.files && data.files.length > 0) {
+      data.files.forEach(file => {
+        formData.append('files', file);
+      });
+    }
+
+    return fetch(`${API_BASE_URL}/agent/chat`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    }).then(async (response) => {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr) continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+
+              switch (parsed.type) {
+                case 'chunk':
+                  onChunk?.(parsed.content);
+                  break;
+                case 'end':
+                  onEnd?.(parsed.conversationId, parsed.generatedFiles);
+                  break;
+                case 'error':
+                  onError?.(parsed.error);
+                  break;
+                case 'node':
+                  onNodeChange?.(parsed.nodeName);
+                  break;
+                case 'skill_selected':
+                  onSkillSelected?.(parsed.skill);
+                  break;
+              }
+            } catch (e) {
+              console.warn("Failed to parse SSE data", e);
+            }
+          }
+        }
+      }
+    });
+  },
+
+  /**
+   * 直接执行Skill（非聊天模式）
+   */
+  execute: (data, callbacks) => {
+    const { onChunk, onEnd, onError, onNodeChange } = callbacks;
+    const token = localStorage.getItem('procureai_token');
+    const formData = new FormData();
+
+    if (data.skillSlug) formData.append('skillSlug', data.skillSlug);
+    if (data.query) formData.append('query', data.query);
+    if (data.parameters) formData.append('parameters', JSON.stringify(data.parameters));
+
+    if (data.files && data.files.length > 0) {
+      data.files.forEach(file => formData.append('files', file));
+    }
+
+    return fetch(`${API_BASE_URL}/agent/execute`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    }).then(async (response) => {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr) continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              switch (parsed.type) {
+                case 'chunk': onChunk?.(parsed.content); break;
+                case 'end': onEnd?.(parsed.generatedFiles); break;
+                case 'error': onError?.(parsed.error); break;
+                case 'node': onNodeChange?.(parsed.nodeName); break;
               }
             } catch (e) {
               console.warn("Failed to parse SSE data", e);

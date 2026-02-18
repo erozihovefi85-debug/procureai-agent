@@ -24,6 +24,7 @@ interface SidebarProps {
   onAdminClick: () => void;
   onSupplierFavorites?: () => void; // 供应商收藏夹入口
   onProductWishlist?: () => void; // 商品心愿单入口
+  onSkillStore?: () => void; // Skill技能中心入口
   isAdmin?: boolean;
 }
 
@@ -43,6 +44,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onAdminClick,
   onSupplierFavorites,
   onProductWishlist,
+  onSkillStore,
   isAdmin = false
 }) => {
   return (
@@ -176,6 +178,16 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 <HeartIcon className="w-5 h-5" />
                 <span className="font-medium text-sm">商品心愿单</span>
+              </button>
+            )}
+
+            {onSkillStore && (
+              <button
+                onClick={onSkillStore}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-indigo-600 hover:bg-indigo-50 hover:shadow-sm transition-all border border-transparent hover:border-slate-200"
+              >
+                <SparklesIcon className="w-5 h-5" />
+                <span className="font-medium text-sm">Skill 技能中心</span>
               </button>
             )}
 
